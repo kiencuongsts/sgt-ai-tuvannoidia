@@ -12,7 +12,8 @@ data/
   chang.json            3. Chặng di chuyển (thời gian, km, giờ bay, điểm ghé dọc đường)
   ngoai-le.json         4. Lịch ngoại lệ (đóng cửa, trùng tu, phương án thay thế)
   khoi-ngay.json        5. Khối ngày (dùng để đối chiếu bữa ăn)
-  toa-do.json           Tọa độ 121 địa điểm cho bản đồ (ước tính, chưa có trên Notion)
+  quy-tac.json          7. Quy tắc thiết kế (ví dụ: gom các điểm cùng nhóm vé vào một ngày)
+  toa-do.json           Tọa độ địa điểm cho bản đồ (ước tính, chưa có trên Notion)
   meta.json             Thời điểm chép dữ liệu từ Notion
 ```
 
@@ -24,11 +25,20 @@ Tọa độ trong `data/toa-do.json` do Claude ước tính; các dòng `chk: tr
 
 Dữ liệu được chép từ trang Notion “Hệ thống thiết kế tour tự động – Dữ liệu điểm tham quan Việt Nam”. Mỗi dòng giữ mã trang Notion, nên link “minh chứng” trên giao diện mở đúng dòng gốc (người xem cần quyền truy cập Notion để mở).
 
+## Quy tắc thiết kế
+
+Bảng “7. Quy tắc thiết kế” trên Notion chứa các quy tắc nhân viên bổ sung dần. Máy tự áp dụng hai loại:
+
+- **Gom cùng ngày**: các điểm cùng “Nhóm vé” (cột mới ở bảng Điểm tham quan) phải nằm trong một ngày, để khách không phải mua vé lần hai. Ngoại lệ khi đêm giữa hai ngày nghỉ tại nơi có “Loại nơi nghỉ” nằm trong cột “Ngoại lệ khi nghỉ đêm tại” (ví dụ “Du thuyền ngủ đêm”). Máy để dành nhóm vé cho ngày quanh đêm ngoại lệ, hoặc cho ngày ở trọn tại nơi có các điểm đó.
+- **Không xếp cùng ngày**: các điểm trong nhóm không được nằm chung một ngày.
+
+Mức “Bắt buộc” thì máy loại hẳn; mức “Ưu tiên” thì máy chỉ xếp khi buổi đó không còn điểm nào khác. Loại “Khác (chưa tự động)” chỉ hiển thị trong tab “Quy tắc” để nhân viên tham khảo. Mỗi điểm bị ảnh hưởng đều ghi rõ quy tắc trong phần “Vì sao chọn” hoặc “Điểm chưa xếp”, kèm link tới dòng quy tắc.
+
 ## Logic gợi ý (5 bước)
 
 1. **Quỹ thời gian**: số ngày × 3 buổi, trừ giờ bay ngày đầu và ngày cuối.
 2. **Thứ tự tuyến và phân bổ đêm**: thử mọi thứ tự ghé các điểm nghỉ đêm, chọn tổng thời gian di chuyển ngắn nhất; đêm dư giao cho điểm xa cổng ra/vào nhất.
-3. **Lấp từng buổi**: chỉ xét điểm có khung giờ khớp buổi, còn mở cửa đúng ngày, không vướng lịch ngoại lệ; chọn cụm có tổng độ nổi bật cao nhất rồi gom các điểm cùng cụm.
+3. **Lấp từng buổi**: chỉ xét điểm có khung giờ khớp buổi, còn mở cửa đúng ngày, không vướng lịch ngoại lệ; chọn cụm có tổng độ nổi bật cao nhất rồi gom các điểm cùng cụm; áp các quy tắc thiết kế đang bật.
 4. **Điểm ghé dọc đường**: chèn nếu vẫn tới nơi nghỉ trước 18:30.
 5. **Xuất văn bản**: ghép từ “Mô tả mẫu”, bữa ăn lấy theo khối ngày trùng điểm nhiều nhất.
 

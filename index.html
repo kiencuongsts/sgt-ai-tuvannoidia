@@ -413,7 +413,93 @@ function ranges(open){
   return out;
 }
 const isGeneric=c=>!c||S.genericClusters.has(c.toLowerCase());
-const gkey=a=>isGeneric(a.cluster)?"solo:"+a.id:"c:"+a.cluster;
+const gkey=a=>{const b=RC&&RC.bundleKey(a.id);return b?"b:"+b:isGeneric(a.cluster)?"solo:"+a.id:"c:"+a.cluster};
+
+
+/* ---------------- Quy tắc thiết kế ---------------- */
+const RULE_DB="cddd12fec7184709907fe65f92eb1a56";
+const AUTO_TYPES=["Gom cùng ngày","Không xếp cùng ngày"];
+let RC=null;   // rule context of the plan being built
+function compileRules(d){
+  d.rulesC=(d.R||[]).map(r=>{
+    const auto=AUTO_TYPES.includes(r.type);
+    const groups=[];
+    if(r.scope==="Điểm tham quan cụ thể"){
+      const m=(r.attrs||[]).filter(id=>d.aById.has(id));
+      if(m.length>1)groups.push({key:"r:"+r.id,label:"nhóm điểm của quy tắc",members:new Set(m)});
+    }else{
+      const tk=r.scope==="Nhóm vé cụ thể"?(r.tickets||[]):[...new Set(d.A.map(a=>a.ticket).filter(Boolean))];
+      for(const t of tk){const m=d.A.filter(a=>a.ticket===t).map(a=>a.id);if(m.length>1)groups.push({key:t,label:`nhóm vé “${t}”`,members:new Set(m)})}
+    }
+    return{r,auto,groups};
+  });
+  return d;
+}
+function ruleCtx(stays,nDays){
+  const nightType=n=>{const id=stays[n-1];const x=id&&S.dById.get(id);return x&&x.stayType||null};
+  const G=[];
+  for(const c of S.rulesC||[])if(c.r.on&&c.auto)for(const g of c.groups)G.push({...g,r:c.r,type:c.r.type,hard:c.r.level!=="Ưu tiên",days:new Map(),soft:[],ex:[]});
+  // ngày nên dành cho nhóm "Gom cùng ngày": quanh đêm ngoại lệ, nếu không thì ngày ở trọn tại nơi có các điểm
+  for(const g of G){
+    g.pref=[];g.prefWhy="";
+    if(g.type!=="Gom cùng ngày")continue;
+    const hosts=new Set();for(const id of g.members)for(const x of (S.aById.get(id)||{dest:[]}).dest)hosts.add(x);
+    const ex=g.r.exStay||[];
+    for(let n=1;n<nDays;n++)if(ex.includes(nightType(n))&&hosts.has(stays[n-1])){g.pref.push(n,n+1);g.prefWhy=`quanh đêm ${n} nghỉ tại ${dn(stays[n-1])} (${nightType(n)}, ngoại lệ của quy tắc)`}
+    if(!g.pref.length){
+      for(let k=2;k<nDays;k++)if(stays[k-2]===stays[k-1]&&hosts.has(stays[k-1])){g.pref.push(k);g.prefWhy=`ngày ${k} ở trọn tại ${dn(stays[k-1])}, đủ thời gian gom cả nhóm`;break}
+    }
+    g.pref=[...new Set(g.pref)];
+  }
+  const of=id=>G.filter(g=>g.members.has(id));
+  const rname=r=>`Quy tắc “${r.name}”`;
+  const allowedAcross=(g,a,b)=>{const lo=Math.min(a,b);return Math.abs(a-b)===1&&(g.r.exStay||[]).includes(nightType(lo))};
+  return{
+    groups:G,nightType,
+    bundleKey:id=>{const g=of(id).find(g=>g.type==="Gom cùng ngày");return g?g.key:null},
+    bundleLabel:key=>{const g=G.find(g=>g.key===key);return g?g.label:key},
+    openToday:(id,k)=>of(id).some(g=>g.type==="Gom cùng ngày"&&g.days.has(k)),
+    check(id,k){
+      for(const g of of(id)){
+        if(g.type==="Gom cùng ngày"){
+          for(const d of g.days.keys())if(d!==k&&!allowedAcross(g,d,k)){
+            const exs=(g.r.exStay||[]).length?` Ngoại lệ chỉ áp dụng khi nghỉ đêm giữa hai ngày tại ${g.r.exStay.join(", ")}.`:"";
+            return{ok:false,hard:g.hard,kind:"rule",r:g.r,why:`${rname(g.r)}: ${g.label} đã tham quan ở ngày ${d}, không xếp quay lại vào ngày ${k} để khỏi mua vé lần hai.${exs}`};
+          }
+          if(!g.days.size&&g.pref.length&&!g.pref.includes(k)&&k<Math.max(...g.pref))
+            return{ok:false,hard:true,kind:"rule",defer:true,r:g.r,why:`${rname(g.r)}: để dành ${g.label} cho ngày ${g.pref.join(", ")} (${g.prefWhy}), nên ngày ${k} chưa mở nhóm này.`};
+        }else if(g.type==="Không xếp cùng ngày"){
+          const same=(g.days.get(k)||[]).filter(x=>x!==id);
+          if(same.length)return{ok:false,hard:g.hard,kind:"rule",r:g.r,why:`${rname(g.r)}: ngày ${k} đã có “${(S.aById.get(same[0])||{}).name}” cùng ${g.label}, không xếp chung một ngày.`};
+        }
+      }
+      return{ok:true};
+    },
+    mark(id,k){
+      const notes=[],rules=[];
+      for(const g of of(id)){
+        const prev=[...g.days.keys()].filter(d=>d!==k);
+        if(!g.days.has(k))g.days.set(k,[]);
+        g.days.get(k).push(id);
+        rules.push(g.r);
+        if(g.type==="Gom cùng ngày"){
+          if(prev.length){const lo=Math.min(prev[0],k);g.ex.push(lo);notes.push(`${rname(g.r)}: được tham quan tiếp ${g.label} ở ngày ${k} vì đêm ${lo} nghỉ tại ${dn(stays[lo-1])} (${nightType(lo)}), là ngoại lệ của quy tắc.`)}
+          else if(g.days.get(k).length===1)notes.push(`${rname(g.r)}: mở ${g.label} ở ngày ${k}; các điểm cùng nhóm được gom vào ngày này, không quay lại ngày khác.${g.pref.includes(k)&&g.prefWhy?` Chọn ngày ${k} vì ${g.prefWhy}.`:""}`);
+          else notes.push(`${rname(g.r)}: cùng ${g.label} với điểm đã xếp trong ngày ${k}, dùng chung một lần mua vé.`);
+        }else notes.push(`${rname(g.r)}: ngày ${k} chưa có điểm nào khác cùng ${g.label}.`);
+      }
+      return{notes,rules};
+    },
+    soft(id,k,why,r){const g=of(id).find(g=>g.r===r);if(g)g.soft.push({id,k,why})}
+  };
+}
+function ruleGate(ctx,a,day){
+  if(!RC)return{ok:true};
+  const c=RC.check(a.id,day.k);
+  if(c.ok)return c;
+  noteEx(ctx,a,{...c,date:day.date});
+  return c;
+}
 
 /* ---------------- Engine ---------------- */
 function perms(a){if(a.length<=1)return[a.slice()];const out=[];a.forEach((x,i)=>{for(const p of perms(a.slice(0,i).concat(a.slice(i+1))))out.push([x,...p])});return out}
@@ -523,9 +609,11 @@ function mealGate(day,t,until,travel){
 function visitWhy(ctx,a,s,start,choice,day,via){
   const why=[];
   if(via)why.push(via);
-  else if(choice.type==="stick")why.push(`Cùng cụm “${a.cluster}” với điểm vừa xếp nên gom chung buổi, đỡ di chuyển.`);
+  else if(choice.type==="stick"){const b=RC&&RC.bundleKey(a.id);why.push(b?`Cùng ${RC.bundleLabel(b)} với điểm vừa xếp nên gom chung, dùng một lần mua vé.`:`Cùng cụm “${a.cluster}” với điểm vừa xếp nên gom chung buổi, đỡ di chuyển.`)}
+  else if(choice.type==="bundle")why.push(`Đã mở ${RC.bundleLabel(RC.bundleKey(a.id))} trong ngày nên ưu tiên xếp nốt các điểm cùng nhóm vé.`);
   else if(choice.type==="group"){
-    const lab=isGeneric(a.cluster)?`Điểm lẻ (cụm “${a.cluster||"trống"}” trùng tên địa phương nên máy không gom)`:`Cụm “${a.cluster}”`;
+    const bk=RC&&RC.bundleKey(a.id);
+    const lab=bk?`Nhóm vé “${bk}”`:isGeneric(a.cluster)?`Điểm lẻ (cụm “${a.cluster||"trống"}” trùng tên địa phương nên máy không gom)`:`Cụm “${a.cluster}”`;
     let t=`${lab}: tổng độ nổi bật ${choice.sum} các điểm còn xếp được trong buổi ${s}, cao nhất.`;
     if(choice.runner)t+=` Phương án kế tiếp: ${choice.runner.label} (${choice.runner.sum}).`;
     why.push(t);
@@ -545,7 +633,9 @@ function visitWhy(ctx,a,s,start,choice,day,via){
 }
 function pushVisit(ctx,day,a,start,why,enroute){
   const end=start+durOf(ctx,a);
-  day.items.push({type:"visit",a,start,end,ses:sessOf(start),why,enroute:!!enroute});
+  const rm=RC?RC.mark(a.id,day.k):{notes:[],rules:[]};
+  why.splice(Math.min(1,why.length),0,...rm.notes);
+  day.items.push({type:"visit",a,start,end,ses:sessOf(start),why,enroute:!!enroute,rules:rm.rules});
   ctx.used.add(a.id);
   return end;
 }
@@ -556,7 +646,7 @@ function choose(fits,last){
   for(const f of fits){const k=gkey(f.a);if(!groups.has(k))groups.set(k,{k,items:[],sum:0,top:0});const g=groups.get(k);g.items.push(f);g.sum+=f.a.score;g.top=Math.max(g.top,f.a.score)}
   const gs=[...groups.values()].sort((a,b)=>b.sum-a.sum||b.top-a.top);
   const g=gs[0];g.items.sort((x,y)=>y.a.score-x.a.score||x.start-y.start);
-  const lab=x=>x.k.startsWith("c:")?`cụm “${x.k.slice(2)}”`:`“${x.items[0].a.name}”`;
+  const lab=x=>x.k.startsWith("c:")?`cụm “${x.k.slice(2)}”`:x.k.startsWith("b:")?`nhóm vé “${x.k.slice(2)}”`:`“${x.items[0].a.name}”`;
   return{pick:g.items[0],choice:{type:"group",sum:g.sum,runner:gs[1]?{label:lab(gs[1]),sum:gs[1].sum}:null}};
 }
 
@@ -575,13 +665,21 @@ function fillAt(ctx,day,loc,t,until){
       if(!a.slots.includes(s))continue;
       const el=eligible(ctx,a,day);
       if(!el.ok){noteEx(ctx,a,{...el,date:day.date});continue}
+      const rg=ruleGate(ctx,a,day);
+      if(!rg.ok&&rg.hard)continue;
       const f=fitStart(ctx,a,t,sEnd,s);
       if(f.start==null){if(f.conflict)noteEx(ctx,a,{kind:"hours",why:f.why,date:day.date});continue}
-      fits.push({a,start:f.start});
+      fits.push({a,start:f.start,soft:rg.ok?null:rg});
     }
+    if(fits.some(f=>!f.soft)){for(let i=fits.length-1;i>=0;i--)if(fits[i].soft)fits.splice(i,1)}
     if(!fits.length){if(sEnd>=until)break;t=sEnd;last=null;if(s==="Tối")break;continue}
-    const{pick,choice}=choose(fits,last);
-    const end=pushVisit(ctx,day,pick.a,pick.start,visitWhy(ctx,pick.a,s,pick.start,choice,day),false);
+    const openB=RC?fits.filter(f=>RC.openToday(f.a.id,day.k)):[];
+    let{pick,choice}=choose(fits,last);
+    if(openB.length&&!(choice.type==="stick"&&openB.includes(pick))){openB.sort((x,y)=>y.a.score-x.a.score||x.start-y.start);pick=openB[0];choice={type:"bundle"}}
+    if(pick.soft){RC.soft(pick.a.id,day.k,pick.soft.why,pick.soft.r)}
+    const vw=visitWhy(ctx,pick.a,s,pick.start,choice,day);
+    if(pick.soft)vw.push(`Lưu ý: ${pick.soft.why} Quy tắc ở mức “Ưu tiên” và buổi này không còn điểm nào khác phù hợp, nên máy vẫn xếp.`);
+    const end=pushVisit(ctx,day,pick.a,pick.start,vw,false);
     last=gkey(pick.a);
     t=end+ctx.hop;
   }
@@ -626,6 +724,8 @@ function enroute(ctx,day,list,t,arriveBy,rest,lunchPend,via,leg){
     if(a.slots.length&&!a.slots.includes(s)){ctx.skipped.push({a,leg,why:`Khung giờ “${a.slots.join(", ")}” không khớp lúc đi qua (${s}, ${hm(t)}).`,date:day.date});continue}
     const el=eligible(ctx,a,day);
     if(!el.ok){noteEx(ctx,a,{...el,date:day.date});ctx.skipped.push({a,leg,why:el.why,date:day.date});continue}
+    const rg=ruleGate(ctx,a,day);
+    if(!rg.ok){ctx.skipped.push({a,leg,why:rg.why,date:day.date});continue}
     const d=durOf(ctx,a);
     const arrive=t+d+ctx.hop+rest+lunchPend(t+d);
     if(arrive>arriveBy+CFG.overrun){ctx.skipped.push({a,leg,why:`Không kịp: ghé thêm ${d} phút thì tới nơi khoảng ${hm(arrive)}, muộn hơn mốc ${hm(arriveBy)}.`,date:day.date});continue}
@@ -680,6 +780,7 @@ function plan(req){
   const outF=flightIn?(flightsOf(flightIn).find(f=>f.label===req.outFlight)||flightsOf(flightIn)[0]||{t:360,label:"(chưa có giờ bay)",code:""}):null;
   const retF=flightOut?(flightsOf(flightOut).find(f=>f.label===req.retFlight)||flightsOf(flightOut).slice(-1)[0]||{t:1200,label:"(chưa có giờ bay)",code:""}):null;
   R.outF=outF;R.retF=retF;R.flightIn=flightIn;R.flightOut=flightOut;
+  RC=ruleCtx(stays,req.days);R.rc=RC;
   const ctx={used:new Set(),ex:R.ex,skipped:R.skipped,defDur:req.defDur,hop:req.hop,maxEffort:req.effort,stayIds:new Set(order),
     byDest:id=>(S.byDest.get(id)||[])};
   const legsUsed=new Map();
@@ -715,7 +816,7 @@ function plan(req){
         const enr=[];
         r.nodes.slice(1,-1).forEach(n=>{if(!ctx.stayIds.has(n))enr.push(...ctx.byDest(n))});
         r.legs.forEach(e=>e.l.stops.forEach(id=>{const a=S.aById.get(id);if(a)enr.push(a)}));
-        for(const a of enr)if(!ctx.used.has(a.id)&&a.score>=4&&a.mode!=="Tùy chọn"&&eligible(ctx,a,day).ok)reserve+=durOf(ctx,a)+ctx.hop;
+        for(const a of enr)if(!ctx.used.has(a.id)&&a.score>=4&&a.mode!=="Tùy chọn"&&eligible(ctx,a,day).ok&&(!RC||RC.check(a.id,day.k).ok))reserve+=durOf(ctx,a)+ctx.hop;
         const lunchRes=(t<870&&t+travelM>CFG.lunchS)?60:0;
         const leaveBy=arriveBy-travelM-reserve-lunchRes;
         day.plan={travelM,reserve,lunchRes,leaveBy,arriveBy};
@@ -742,12 +843,15 @@ function plan(req){
   for(const id of order)for(const a of ctx.byDest(id))pool.set(a.id,a);
   R.unplaced=[...pool.values()].filter(a=>!ctx.used.has(a.id)).map(a=>{
     const e=R.ex.get(a.id);const sk=R.skipped.filter(s=>s.a.id===a.id);
-    let reasons=e?e.items.map(i=>i.why):[];
+    let reasons=e?e.items.filter(i=>!i.defer).map(i=>i.why):[];
+    const og=RC&&RC.groups.find(g=>g.members.has(a.id)&&g.type==="Gom cùng ngày"&&g.days.size);
+    if(og&&!reasons.length&&a.mode!=="Tùy chọn")reasons=[`Quy tắc “${og.r.name}”: ${og.label} được gom vào ngày ${[...og.days.keys()].join(", ")}, nhưng buổi phù hợp với điểm này (“${a.slots.join(", ")||"trống"}”) đã kín bởi các điểm nổi bật hơn cùng nhóm. Không xếp sang ngày khác để khỏi mua vé lần hai.`];
     let x=e?e.items.map(i=>i.x).filter(Boolean):[];
+    const rl=e?[...new Set(e.items.map(i=>i.r).filter(Boolean))]:[];
     if(a.mode==="Tùy chọn")reasons=["Hình thức “Tùy chọn”: máy không xếp vào lịch chính, chỉ gợi ý kèm buổi phù hợp."].concat(reasons);
     if(!reasons.length&&sk.length)reasons=sk.map(s=>s.why);
     if(!reasons.length)reasons=[`Không còn buổi trống khớp khung giờ “${a.slots.join(", ")||"trống"}” sau khi xếp các điểm nổi bật hơn.`];
-    return{a,reasons:[...new Set(reasons)],x:[...new Set(x)]};
+    return{a,reasons:[...new Set(reasons)],x:[...new Set(x)],rules:rl};
   }).sort((p,q)=>q.a.score-p.a.score);
   R.legsUsed=[...legsUsed.values()];
   R.used=ctx.used;
@@ -1130,7 +1234,7 @@ const TourMap=(()=>{
 /* ---------------- Rendering ---------------- */
 function evRows(a,ctx){
   const r=[
-    ["Độ nổi bật (1-5)",a.score||null],["Khung giờ phù hợp",a.slots.join(", ")],["Cụm tham quan",a.cluster],["Giờ mở cửa",a.open],
+    ["Độ nổi bật (1-5)",a.score||null],["Khung giờ phù hợp",a.slots.join(", ")],["Cụm tham quan",a.cluster],["Nhóm vé",a.ticket],["Giờ mở cửa",a.open],
     ["Ngày đóng cửa cố định",a.closed.join(", ")],["Thời lượng (phút)",a.dur],["Hình thức mặc định",a.mode],["Mức vận động",a.effort],["Giá vé tham khảo",money(a.price)]
   ];
   return `<dl class="ev">${r.map(([k,v])=>`<dt>${esc(k)}</dt><dd class="${v==null||v===""?"miss":""}">${v==null||v===""?"(trống)":esc(v)}</dd>`).join("")}</dl>`;
@@ -1140,6 +1244,10 @@ function srcLinks(a,extra){
   if(a.src)l.push(`<a href="${esc(a.src)}" target="_blank" rel="noopener">Nguồn gốc dữ liệu ↗</a>`);
   for(const x of extra||[])l.push(`<a href="${esc(x.url)}" target="_blank" rel="noopener">Lịch ngoại lệ ↗</a>`+(x.src?` <a href="${esc(x.src)}" target="_blank" rel="noopener">Nguồn thông báo ↗</a>`:""));
   return `<div class="srcs">${l.join("")}</div>`;
+}
+function ruleLinks(rs){
+  rs=[...new Set(rs||[])];
+  return rs.length?`<div class="srcs">${rs.map(r=>`<a href="${esc(r.url)}" target="_blank" rel="noopener">Quy tắc “${esc(r.name)}” ↗</a>`).join("")}</div>`:"";
 }
 function modeTag(a){
   if(a.mode==="Tự túc")return `<span class="tag warn">Chi phí tự túc</span>`;
@@ -1156,10 +1264,10 @@ function renderItem(it,R,prevSes){
   if(it.type==="visit"){
     const a=it.a;
     return `<li class="it">${timeCell(it,prevSes)}<div>
-      <div class="nm">${esc(a.name)} <span class="tag acc">★ ${a.score}</span>${it.enroute?`<span class="tag ev">Dọc đường</span>`:""}${modeTag(a)}${!a.dur?`<span class="tag warn">Thời lượng ước tính</span>`:""}</div>
+      <div class="nm">${esc(a.name)} <span class="tag acc">★ ${a.score}</span>${it.enroute?`<span class="tag ev">Dọc đường</span>`:""}${a.ticket?`<span class="tag">Vé: ${esc(a.ticket)}</span>`:""}${modeTag(a)}${!a.dur?`<span class="tag warn">Thời lượng ước tính</span>`:""}</div>
       ${a.desc?`<p class="ds">${esc(a.desc)}</p>`:""}
       <details class="why"><summary>Vì sao chọn · minh chứng</summary><div class="whybox">
-        <ul>${it.why.map(w=>`<li>${esc(w)}</li>`).join("")}</ul>${evRows(a)}${srcLinks(a,excHits(a,R.curDate).map(h=>h.x))}
+        <ul>${it.why.map(w=>`<li>${esc(w)}</li>`).join("")}</ul>${evRows(a)}${srcLinks(a,excHits(a,R.curDate).map(h=>h.x))}${ruleLinks(it.rules)}
       </div></details></div></li>`;
   }
   if(it.type==="transfer"){
@@ -1214,7 +1322,7 @@ function renderPlanTab(R){
   const up=R.unplaced;
   return `<section class="mapwrap" id="mapwrap" aria-label="Bản đồ hành trình"></section>`+R.days.map(d=>renderDay(d,R)).join("")+
   `<div class="card"><h4>Điểm chưa xếp vào lịch (${up.length})</h4><p class="muted small">Các điểm thuộc nơi nghỉ đêm đã chọn nhưng không có trong lịch, kèm lý do.</p>
-   <div class="list" style="margin-top:8px">${up.map(u=>`<details class="why"><summary>${esc(u.a.name)} · ★${u.a.score}${u.x.length?" · bị loại do lịch ngoại lệ":""}</summary><div class="whybox"><ul>${u.reasons.map(r=>`<li>${esc(r)}</li>`).join("")}</ul>${u.x.map(x=>x.alt?`<p class="small"><b>Phương án thay thế ghi trên Notion:</b> ${esc(x.alt)}</p>`:"").join("")}${evRows(u.a)}${srcLinks(u.a,u.x)}</div></details>`).join("")||`<p class="muted small">Không có.</p>`}</div></div>`;
+   <div class="list" style="margin-top:8px">${up.map(u=>`<details class="why"><summary>${esc(u.a.name)} · ★${u.a.score}${u.x.length?" · bị loại do lịch ngoại lệ":""}${u.rules.length?" · theo quy tắc thiết kế":""}</summary><div class="whybox"><ul>${u.reasons.map(r=>`<li>${esc(r)}</li>`).join("")}</ul>${u.x.map(x=>x.alt?`<p class="small"><b>Phương án thay thế ghi trên Notion:</b> ${esc(x.alt)}</p>`:"").join("")}${evRows(u.a)}${srcLinks(u.a,u.x)}${ruleLinks(u.rules)}</div></details>`).join("")||`<p class="muted small">Không có.</p>`}</div></div>`;
 }
 
 function renderTraceTab(R){
@@ -1233,7 +1341,7 @@ function renderTraceTab(R){
     if(d.plan)t+=` Có chặng ${Math.round(d.plan.travelM/6)/10} giờ; giữ ${d.plan.reserve} phút cho điểm dọc đường nổi bật (★≥4)${d.plan.lunchRes?" và 60 phút ăn trưa trên đường":""}, nên phải rời đi trước ${hm(d.plan.leaveBy)}.`;
     return `<li>${esc(t)}</li>`;
   }).join("");
-  const exl=[];for(const[id,e]of R.ex)for(const i of e.items)if(i.kind!=="hours")exl.push(`<li>${esc(e.a.name)}: ${esc(i.why)} ${i.x?`<a href="${esc(i.x.url)}" target="_blank" rel="noopener">Minh chứng ↗</a>`:`<a href="${esc(e.a.url)}" target="_blank" rel="noopener">Minh chứng ↗</a>`}</li>`);
+  const exl=[];for(const[id,e]of R.ex)for(const i of e.items)if(i.kind!=="hours"&&i.kind!=="rule")exl.push(`<li>${esc(e.a.name)}: ${esc(i.why)} ${i.x?`<a href="${esc(i.x.url)}" target="_blank" rel="noopener">Minh chứng ↗</a>`:`<a href="${esc(e.a.url)}" target="_blank" rel="noopener">Minh chứng ↗</a>`}</li>`);
   const ins=[];R.days.forEach(d=>d.items.filter(i=>i.type==="visit"&&i.enroute).forEach(i=>ins.push(`<li>Ngày ${d.k}: chèn <b>${esc(i.a.name)}</b>. ${esc(i.why[0])}</li>`)));
   const sk=R.skipped.filter(s=>!R.used.has(s.a.id)).map(s=>`<li>Bỏ <b>${esc(s.a.name)}</b> (${esc(s.leg?s.leg.name:"")}): ${esc(s.why)}</li>`);
   const s5=R.days.map(d=>`<li>Ngày ${d.k}: bữa ${esc(d.meals.join(", "))} ${d.block?`lấy từ khối ngày <a href="${esc(d.block.b.url)}" target="_blank" rel="noopener">“${esc(d.block.b.title)}”</a> (trùng ${d.block.ov} điểm)`:"theo quy ước mặc định vì không có khối ngày nào trùng điểm"}.</li>`).join("");
@@ -1246,14 +1354,52 @@ function renderTraceTab(R){
     <ul class="small" style="margin-top:10px">${R.alloc.why.map(w=>`<li>${esc(w)}</li>`).join("")}</ul>
     <div class="srcs">${R.route.p.map(id=>`<a href="${esc(S.dById.get(id).url)}" target="_blank" rel="noopener">${esc(dn(id))} ↗</a>`).join("")}</div></div></div>
   <div class="card stepcard"><div class="stepno">3</div><div><h4>Lấp từng buổi</h4>
-    <p class="small">Mỗi buổi: chỉ xét điểm có Khung giờ khớp buổi, còn mở cửa đúng ngày, không vướng Lịch ngoại lệ; chọn cụm có tổng độ nổi bật cao nhất (điểm có cụm trùng tên địa phương được tính là điểm lẻ), rồi gom các điểm cùng cụm liền nhau.</p>
-    <ul class="small">${s3}</ul>${exl.length?`<p class="small"><b>Bị loại theo ngày:</b></p><ul class="small">${exl.join("")}</ul>`:""}</div></div>
+    <p class="small">Mỗi buổi: chỉ xét điểm có Khung giờ khớp buổi, còn mở cửa đúng ngày, không vướng Lịch ngoại lệ; chọn cụm có tổng độ nổi bật cao nhất (điểm có cụm trùng tên địa phương được tính là điểm lẻ), rồi gom các điểm cùng cụm liền nhau. Sau đó áp các quy tắc đang bật trong bảng “7. Quy tắc thiết kế” (ví dụ gom các điểm cùng nhóm vé vào một ngày).</p>
+    <ul class="small">${s3}</ul>${traceRules(R)}${exl.length?`<p class="small"><b>Bị loại theo ngày:</b></p><ul class="small">${exl.join("")}</ul>`:""}</div></div>
   <div class="card stepcard"><div class="stepno">4</div><div><h4>Chèn điểm ghé dọc đường</h4>
     <ul class="small">${ins.join("")||"<li>Không chèn điểm nào.</li>"}${sk.join("")}</ul></div></div>
   <div class="card stepcard"><div class="stepno">5</div><div><h4>Xuất văn bản</h4><ul class="small">${s5}</ul><p class="small muted">Câu chữ lấy từ cột “Mô tả mẫu” của từng điểm.</p></div></div>
   </div>`;
 }
 
+function ruleUsage(R){
+  return (R.rc?R.rc.groups:[]).map(g=>{
+    const days=[...g.days.keys()].sort((a,b)=>a-b);
+    const n=days.reduce((s,d)=>s+g.days.get(d).length,0);
+    const ok=g.type==="Gom cùng ngày"?days.every((d,i)=>!i||(d-days[i-1]===1&&g.ex.includes(days[i-1]))):true;
+    let t;
+    if(!n)t=`${g.label}: không có điểm nào trong lịch trình này.`;
+    else if(g.type==="Gom cùng ngày")t=days.length===1?`${g.label}: ${n} điểm, đều ở ngày ${days[0]}.`:`${g.label}: ${n} điểm ở ngày ${days.join(" và ")}; được tách vì ${days.slice(0,-1).map(d=>`đêm ${d} nghỉ tại ${dn(R.days[d-1].stay)} (${R.rc.nightType(d)})`).join(", ")}.`;
+    else t=`${g.label}: ${n} điểm, ${days.map(d=>`ngày ${d}: ${g.days.get(d).length}`).join(", ")}.`;
+    return{g,n,days,ok:ok&&!g.soft.length,t,soft:g.soft};
+  });
+}
+function traceRules(R){
+  const u=ruleUsage(R).filter(x=>x.n);
+  const defers=[];for(const[id,e]of R.ex)for(const i of e.items)if(i.kind==="rule"&&R.used.has(id)&&i.defer)defers.push(`${e.a.name}: ${i.why}`);
+  if(!u.length&&!defers.length)return"";
+  return `<p class="small"><b>Áp dụng quy tắc thiết kế:</b></p><ul class="small">${u.map(x=>`<li>${esc(x.t)} ${x.ok?"Đạt.":"Có ngoại lệ mức “Ưu tiên”."} <a href="${esc(x.g.r.url)}" target="_blank" rel="noopener">Quy tắc ↗</a></li>`).join("")}${[...new Set(defers)].slice(0,4).map(d=>`<li>${esc(d)}</li>`).join("")}</ul>`;
+}
+function renderRuleTab(R){
+  const all=S.rulesC||[];
+  const usage=ruleUsage(R);
+  const add=`<div class="bar"><span class="muted small">Quy tắc được quản lý trong bảng “7. Quy tắc thiết kế” trên Notion. Thêm hoặc tắt quy tắc ở đó, rồi đồng bộ lại để máy đọc.</span><a class="btn sm" href="${NOTION_P}${RULE_DB}" target="_blank" rel="noopener">Thêm quy tắc trên Notion ↗</a></div>`;
+  if(!all.length)return add+`<div class="card"><p>Chưa có quy tắc nào trong kho dữ liệu.</p></div>`;
+  const cards=all.map(c=>{
+    const r=c.r;
+    const mine=usage.filter(x=>x.g.r===r);
+    const status=!r.on?`<span class="tag">Đang tắt</span>`:c.auto?`<span class="tag acc">Máy tự áp dụng</span>`:`<span class="tag warn">Nhắc nhân viên, máy chưa tự kiểm</span>`;
+    const scope=r.scope==="Nhóm vé cụ thể"?`Nhóm vé: ${(r.tickets||[]).join(", ")||"(chưa chọn)"}`:r.scope==="Điểm tham quan cụ thể"?`${(r.attrs||[]).length} điểm tham quan cụ thể`:"Mọi nhóm vé";
+    const grp=c.groups.length?c.groups.map(g=>`${g.label} (${g.members.size} điểm)`).join("; "):"Chưa có nhóm nào đủ 2 điểm trở lên trong dữ liệu.";
+    const res=r.on&&c.auto?(mine.some(x=>x.n)?`<ul class="small">${mine.filter(x=>x.n).map(x=>`<li>${x.ok?"✓":"!"} ${esc(x.t)}${x.soft.length?` ${esc(x.soft.map(s=>s.why).join(" "))}`:""}</li>`).join("")}</ul>`:`<p class="small muted">Lịch trình này không có điểm nào thuộc phạm vi quy tắc.</p>`):"";
+    return `<div class="card"><h4 style="display:flex;gap:8px;flex-wrap:wrap;align-items:baseline">${esc(r.name)} ${status}${r.level?`<span class="tag">${esc(r.level)}</span>`:""}</h4>
+      <dl class="ev"><dt>Loại quy tắc</dt><dd>${esc(r.type||"(trống)")}</dd><dt>Phạm vi</dt><dd>${esc(scope)}</dd><dt>Nhóm máy nhận ra</dt><dd>${esc(grp)}</dd><dt>Ngoại lệ khi nghỉ đêm tại</dt><dd class="${(r.exStay||[]).length?"":"miss"}">${esc((r.exStay||[]).join(", ")||"(không)")}</dd></dl>
+      ${r.reason?`<p class="small"><b>Lý do:</b> ${esc(r.reason)}</p>`:""}${r.example?`<p class="small"><b>Ví dụ:</b> ${esc(r.example)}</p>`:""}
+      ${res?`<p class="small" style="margin-top:8px"><b>Kết quả trên lịch trình này:</b></p>${res}`:""}
+      <div class="srcs"><a href="${esc(r.url)}" target="_blank" rel="noopener">Dòng quy tắc trên Notion ↗</a></div></div>`;
+  }).join("");
+  return add+`<div class="list">${cards}</div>`;
+}
 function renderWarnTab(R){
   if(!R.warnings.length)return `<div class="card"><p>Không phát hiện vấn đề dữ liệu nào liên quan đến lịch trình này.</p></div>`;
   return `<div class="list">${R.warnings.map(w=>`<div class="card wcard ${w.lvl==="bad"?"bad":""}"><h4>${esc(w.title)}</h4>${w.body?`<p class="small">${esc(w.body)}</p>`:""}${w.items.length?`<ul>${w.items.map(i=>`<li><a href="${esc(i.url)}" target="_blank" rel="noopener">${esc(i.label)}</a></li>`).join("")}</ul>`:""}</div>`).join("")}</div>`;
@@ -1311,6 +1457,7 @@ function render(R){
     <div class="tabs" role="tablist">
       <button role="tab" data-tab="plan" aria-selected="${state.tab==="plan"}">Lịch trình</button>
       <button role="tab" data-tab="trace" aria-selected="${state.tab==="trace"}">Diễn giải 5 bước</button>
+      <button role="tab" data-tab="rule" aria-selected="${state.tab==="rule"}">Quy tắc${(S.rulesC||[]).filter(c=>c.r.on).length?`<span class="cnt">${(S.rulesC||[]).filter(c=>c.r.on).length}</span>`:""}</button>
       <button role="tab" data-tab="warn" aria-selected="${state.tab==="warn"}">Cảnh báo dữ liệu${wc?`<span class="cnt">${wc}</span>`:""}</button>
       <button role="tab" data-tab="text" aria-selected="${state.tab==="text"}">Văn bản gửi khách</button>
     </div>
@@ -1330,6 +1477,7 @@ function renderTab(){
   }
   else if(state.tab==="trace")body.innerHTML=renderTraceTab(R);
   else if(state.tab==="warn")body.innerHTML=renderWarnTab(R);
+  else if(state.tab==="rule")body.innerHTML=renderRuleTab(R);
   else{
     const t=buildText(R);
     body.innerHTML=`<div class="bar"><span class="muted small">Ghép từ “Mô tả mẫu” trên Notion. Kiểm tra trước khi gửi khách.</span><button class="btn sm" type="button" id="copy">Sao chép văn bản</button></div><pre class="text" id="ptext">${esc(t)}</pre>`;
@@ -1421,7 +1569,7 @@ const TABLES={"diem-den":"Điểm đến","diem-tham-quan":"Điểm tham quan","
 function setStatus(kind,text){const p=$("#status");p.className="pill "+kind;$("#statusText").textContent=text}
 function fromStore(docs){
   const g=k=>((docs[k]||{}).rows||[]).map(r=>({...r,url:NOTION_P+r.id}));
-  return{D:g("diem-den"),A:g("diem-tham-quan"),L:g("chang"),X:g("ngoai-le"),K:g("khoi-ngay")};
+  return{D:g("diem-den"),A:g("diem-tham-quan"),L:g("chang"),X:g("ngoai-le"),K:g("khoi-ngay"),R:g("quy-tac")};
 }
 function showLoadError(msg){
   $("#out").innerHTML=`<div class="alert bad"><b>Chưa đọc được dữ liệu.</b><br>${esc(msg)}</div>`;
@@ -1438,8 +1586,8 @@ async function start(){
     showLoadError(`Không tải được file dữ liệu (${e.message}). Nếu đang mở file index.html trực tiếp trên máy, hãy mở qua GitHub Pages hoặc một web server.`);
     return;
   }
-  try{docs["toa-do"]=await fetch("data/toa-do.json",{cache:"no-cache"}).then(r=>r.ok?r.json():null)}catch(e){}
-  S=index(fromStore(docs));
+  for(const k of ["toa-do","quy-tac"]){try{docs[k]=await fetch("data/"+k+".json",{cache:"no-cache"}).then(r=>r.ok?r.json():null)}catch(e){}}
+  S=compileRules(index(fromStore(docs)));
   S.coords=new Map(((docs["toa-do"]||{}).rows||[]).map(r=>[r.id,r]));
   const at=docs.meta&&docs.meta.syncedAt?new Date(docs.meta.syncedAt):null;
   setStatus("ok",`${S.A.length} điểm tham quan${at?` · dữ liệu chép từ Notion ngày ${pad(at.getDate())}/${pad(at.getMonth()+1)}/${at.getFullYear()}`:""}`);
