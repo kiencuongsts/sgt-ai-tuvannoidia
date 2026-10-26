@@ -915,7 +915,7 @@ const TourMap=(()=>{
       if(!pts.length)return{...view};
       const xs=pts.map(p=>W2(p)[0]),ys=pts.map(p=>W2(p)[1]);
       const x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys);
-      const top=W<520?96:92,bot=58,side=W<520?28:48;
+      const top=W<520?112:122,bot=62,side=W<520?36:64;
       const uw=Math.max(80,W-2*side),uh=Math.max(80,H-top-bot);
       const per=Math.max((x1-x0)/uw,(y1-y0)/uh);
       const span=Math.min(Math.max(per*W,.06),22);
@@ -968,7 +968,7 @@ const TourMap=(()=>{
         html.push(`<i class="${cls}" style="transform:translate(${sx.toFixed(1)}px,${sy.toFixed(1)}px)"></i>`);
         if(!o.showLabel)continue;
         const text=(o.p.num&&!allMode&&o.cur?o.p.num+". ":"")+o.p.name;
-        const w=Math.min(190,text.length*6.6+16),h=22;
+        const w=Math.min(220,Math.ceil(text.length*(o.p.type==="stay"?7.6:7.1)+20)),h=22;
         const cands=[[sx+9,sy-h/2],[sx-9-w,sy-h/2],[sx-w/2,sy-h-8],[sx-w/2,sy+8]];
         let pos=null;for(const[x,y]of cands){const r={x,y,w,h};if(x<4||x+w>W-4||y<4||y+h>H-4)continue;if(!hit(r)||o.p.type==="stay"){pos=r;break}}
         if(!pos)continue;rects.push(pos);
