@@ -35,6 +35,12 @@ Bảng “7. Quy tắc thiết kế” trên Notion chứa các quy tắc nhân 
 
 Mức “Bắt buộc” thì máy loại hẳn; mức “Ưu tiên” thì máy chỉ xếp khi buổi đó không còn điểm nào khác. Loại “Khác (chưa tự động)” chỉ hiển thị trong tab “Quy tắc” để nhân viên tham khảo. Mỗi điểm bị ảnh hưởng đều ghi rõ quy tắc trong phần “Vì sao chọn” hoặc “Điểm chưa xếp”, kèm link tới dòng quy tắc.
 
+## Thử nghiệm với đồng nghiệp
+
+Nút **Đánh giá phương án này** (dưới tóm tắt lịch trình) sao chép tóm tắt phương án: yêu cầu, lịch từng ngày, các chỉnh tay, điểm chưa xếp, cảnh báo. Người thử dán vào bảng “9. Đánh giá thử nghiệm” trên Notion rồi chấm mức phù hợp, tuyến, điểm tham quan, giờ giấc, lý do/minh chứng.
+
+Tự chấm trên 20 tour đang bán (bảng “6. Tour mẫu”), đưa cho máy đúng nơi khởi hành, nơi nghỉ đêm, số ngày, ngày đi, chuyến bay: lịch máy chứa 79% điểm tham quan của tour thật, 12/20 tour có thứ tự nơi nghỉ đêm khớp.
+
 ## Chỉnh tay trên lịch
 
 Mỗi điểm tham quan trong tab “Lịch trình” có ba thao tác: **Sửa giờ** (giờ bắt đầu, thời lượng), **Chèn điểm sau** và **Bỏ khỏi lịch**; cuối mỗi ngày có **Chèn điểm vào ngày này**, gợi ý tùy chọn có **Đưa vào lịch**.
@@ -64,7 +70,9 @@ Dòng chưa đánh dấu “Đã xác minh” hiện cảnh báo để điều h
 4. **Điểm ghé dọc đường**: chèn nếu vẫn tới nơi nghỉ trước 18:30.
 5. **Xuất văn bản**: ghép từ “Mô tả mẫu”, bữa ăn lấy theo khối ngày trùng điểm nhiều nhất.
 
-Khi Notion còn trống “Thời lượng (phút)” hoặc “Thời gian (phút)”, máy dùng giả định (90 phút/điểm, cận trên của giờ chạy) và hiện cảnh báo trong tab “Cảnh báo dữ liệu”.
+Khi Notion còn trống “Thời lượng (phút)”, máy dùng thời lượng Claude ước tính theo thời gian tham quan phổ biến (trường `durEst` trong `data/diem-tham-quan.json`, kèm `durTour` = số phút các tour đang bán dành cho điểm đó); không có ước tính thì tính 90 phút. Chặng thiếu “Thời gian (phút)” lấy cận trên của giờ chạy. Cả hai đều hiện cảnh báo trong tab “Cảnh báo dữ liệu”.
+
+Chuyến bay: danh sách liệt kê mọi chuyến theo từng sân bay, mặc định sân bay có nhiều chuyến nhất; chuyến đã chọn quyết định sân bay đến/về của tuyến.
 
 ## Cập nhật dữ liệu
 

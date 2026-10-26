@@ -150,6 +150,14 @@ pre.text{white-space:pre-wrap;font:400 13.5px/1.6 var(--f-ui);background:var(--s
 .muted{color:var(--muted)}
 .small{font-size:12.5px}
 .skel{height:14px;border-radius:6px;background:var(--sunk);margin:8px 0}
+
+.reviewbox{margin-top:12px;padding:12px 14px;border:1px solid var(--line);border-radius:var(--r);background:var(--sunk);display:flex;flex-direction:column;gap:8px}
+.reviewbox[hidden]{display:none}
+.reviewbox p{margin:0}
+.reviewbox textarea{width:100%;font:12.5px/1.5 var(--f-mono);padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink);resize:vertical}
+.reviewbox .actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.sumact{margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+
 /* ---- chỉnh tay ---- */
 .acts{display:flex;gap:4px 14px;flex-wrap:wrap;margin-top:6px}
 .lnk{border:0;background:none;padding:2px 0;color:var(--evid);font:inherit;font-size:12.5px;cursor:pointer;font-weight:500}
@@ -561,7 +569,7 @@ function anchorFor(r,date,t0){
 function anchorProblems(cand,na,req){
   const stays=[];na.al.forEach(x=>{for(let i=0;i<x.n;i++)stays.push(x.id)});
   const fi=cand.gi.flight;
-  const outF=fi?(flightsOf(fi).find(f=>f.label===req.outFlight)||flightsOf(fi)[0]||{t:360}):null;
+  const outF=fi?(flightsOf(fi).find(f=>f.label===flightSel(req.outFlight).label)||flightsOf(fi)[0]||{t:360}):null;
   const out=[];
   for(let k=1;k<=req.days;k++){
     const from=k===1?cand.gi.id:stays[k-2],to=k<req.days?stays[k-1]:cand.gr.id;
@@ -588,8 +596,11 @@ function gateways(origin){
   return{inG,retG};
 }
 
-function chooseRoute(origin,stops){
-  const {inG,retG}=gateways(origin);
+function flightSel(v){const s=String(v||"");const i=s.indexOf("|");return i<0?{leg:null,label:s}:{leg:s.slice(0,i),label:s.slice(i+1)}}
+function chooseRoute(origin,stops,force){
+  let {inG,retG}=gateways(origin);
+  if(force&&force.inLeg){const f=inG.filter(g=>g.flight&&g.flight.id===force.inLeg);if(f.length)inG=f}
+  if(force&&force.outLeg){const f=retG.filter(g=>g.flight&&g.flight.id===force.outLeg);if(f.length)retG=f}
   const cands=[];
   for(const p of perms(stops))for(const gi of inG)for(const gr of retG){
     let m=gi.flight?CFG.flightMin:0,ok=true;const parts=[];
@@ -601,7 +612,7 @@ function chooseRoute(origin,stops){
     const firstLeg=parts[0]?parts[0].m:0;
     cands.push({p,gi,gr,m,parts,endsAtRet,firstLeg});
   }
-  cands.sort((a,b)=>a.m-b.m||(b.endsAtRet-a.endsAtRet)||(b.firstLeg-a.firstLeg));
+  cands.sort((a,b)=>a.m-b.m||(a.endsAtRet-b.endsAtRet)||(b.firstLeg-a.firstLeg));
   return cands;
 }
 
@@ -662,7 +673,7 @@ function noteEx(ctx,a,info){
   const e=ctx.ex.get(a.id);
   if(!e.items.some(i=>i.why===info.why))e.items.push(info);
 }
-const durOf=(ctx,a)=>a.dur||ctx.defDur;
+const durOf=(ctx,a)=>a.dur||a.durEst||ctx.defDur;
 
 function fitStart(ctx,a,t,sEnd,s){
   const d=durOf(ctx,a);const rs=ranges(a.open);
@@ -701,7 +712,7 @@ function visitWhy(ctx,a,s,start,choice,day,via){
   else why.push("Giờ mở cửa còn trống trên Notion, máy chưa kiểm được.");
   if(a.closed.length)why.push(`Đóng cửa cố định ${a.closed.join(", ")}; ${day.wd} vẫn mở.`);
   for(const h of excHits(a,day.date))if(!h.hit)why.push(`Có lịch ngoại lệ “${xTitle(h.x)}” (${xRange(h.x)}) nhưng không trùng ngày ${fmtD(day.date)}.`);
-  why.push(a.dur?`Thời lượng ${a.dur} phút (theo Notion).`:`Thời lượng trống trên Notion, tạm tính ${ctx.defDur} phút.`);
+  why.push(a.dur?`Thời lượng ${a.dur} phút (theo Notion).`:a.durEst?`Thời lượng trống trên Notion; Claude ước tính ${a.durEst} phút theo thời gian tham quan phổ biến (cần xác minh)${a.durTour?`. Các tour đang bán dành khoảng ${a.durTour} phút cho điểm này`:""}.`:`Thời lượng trống trên Notion, tạm tính ${ctx.defDur} phút.`);
   if(a.mode==="Tự túc")why.push("Hình thức mặc định “Tự túc”: vẫn xếp vào lịch, văn bản ghi chi phí tự túc.");
   if(a.mode==="Tự do khám phá")why.push("Hình thức “Tự do khám phá”: khách tự đi, không cần HDV dẫn.");
   return why;
@@ -896,7 +907,8 @@ function plan(req){
   if(!req.stops.length){R.errors.push("Chọn ít nhất một điểm nghỉ đêm.");return R}
   if(req.stops.length>6){R.errors.push("Chọn tối đa 6 điểm nghỉ đêm để máy còn thử hết các thứ tự tuyến.");return R}
   const nights=req.days-1;
-  const routes=chooseRoute(req.origin,req.stops);
+  const routes=chooseRoute(req.origin,req.stops,{inLeg:flightSel(req.outFlight).leg,outLeg:flightSel(req.retFlight).leg});
+  const freeBest=(flightSel(req.outFlight).leg||flightSel(req.retFlight).leg)?chooseRoute(req.origin,req.stops).filter(r=>Number.isFinite(r.m))[0]:null;
   let best=routes[0];
   if(!best||!Number.isFinite(best.m)){
     const miss=(best&&best.parts.find(p=>p.m==null));
@@ -913,6 +925,7 @@ function plan(req){
   }
   R.trace.routes=routes.filter(r=>Number.isFinite(r.m)).slice(0,6);
   if(!R.trace.routes.includes(best))R.trace.routes.push(best);
+  R.trace.gwAlt=freeBest&&freeBest.m<best.m-30&&(freeBest.gi.id!==best.gi.id||freeBest.gr.id!==best.gr.id)?freeBest:null;
   R.route=best;
   const order=best.p;
   const na=allocNights(order,nights,best.gi,best.gr,req.override);
@@ -920,8 +933,8 @@ function plan(req){
   R.alloc=na;
   const stays=[];na.al.forEach(x=>{for(let i=0;i<x.n;i++)stays.push(x.id)});
   const flightIn=best.gi.flight,flightOut=best.gr.flight;
-  const outF=flightIn?(flightsOf(flightIn).find(f=>f.label===req.outFlight)||flightsOf(flightIn)[0]||{t:360,label:"(chưa có giờ bay)",code:""}):null;
-  const retF=flightOut?(flightsOf(flightOut).find(f=>f.label===req.retFlight)||flightsOf(flightOut).slice(-1)[0]||{t:1200,label:"(chưa có giờ bay)",code:""}):null;
+  const outF=flightIn?(flightsOf(flightIn).find(f=>f.label===flightSel(req.outFlight).label)||flightsOf(flightIn)[0]||{t:360,label:"(chưa có giờ bay)",code:""}):null;
+  const retF=flightOut?(flightsOf(flightOut).find(f=>f.label===flightSel(req.retFlight).label)||flightsOf(flightOut).slice(-1)[0]||{t:1200,label:"(chưa có giờ bay)",code:""}):null;
   R.outF=outF;R.retF=retF;R.flightIn=flightIn;R.flightOut=flightOut;
   RC=ruleCtx(stays,req.days);R.rc=RC;
   const ctx={used:new Set(),ex:R.ex,skipped:R.skipped,defDur:req.defDur,hop:req.hop,maxEffort:req.effort,stayIds:new Set(order),
@@ -1032,7 +1045,7 @@ function buildWarnings(R,order){
   if(noSch.length)W.push({lvl:"warn",title:`${noSch.length} chặng tàu/thuyền chưa có lịch chạy`,body:"Máy đang coi như đi lúc nào cũng được. Thêm giờ chạy vào bảng Lịch chạy dịch vụ để máy tính ngược giờ rời đi.",items:noSch.map(l=>({label:l.name,url:l.url}))});
   const usedA=[...R.used].map(id=>S.aById.get(id));
   const noDur=usedA.filter(a=>!a.dur);
-  if(noDur.length)W.push({lvl:"warn",title:`${noDur.length} điểm trong lịch chưa có “Thời lượng (phút)”`,body:`Máy tạm tính ${R.req.defDur} phút mỗi điểm, nên giờ giấc trong lịch chỉ mang tính ước lượng.`,items:noDur.map(a=>({label:a.name,url:a.url}))});
+  if(noDur.length)W.push({lvl:"warn",title:`${noDur.length} điểm trong lịch chưa có “Thời lượng (phút)”`,body:`Máy dùng thời lượng do Claude ước tính theo thời gian tham quan phổ biến (điểm không có ước tính thì tính ${R.req.defDur} phút), nên giờ giấc chỉ mang tính tương đối. Nhập số đã xác minh vào cột “Thời lượng (phút)” để thay thế.`,items:noDur.map(a=>({label:a.name,url:a.url}))});
   const legs=[...R.legsUsed,...[R.flightIn,R.flightOut].filter(Boolean)];
   const noMin=R.legsUsed.filter(l=>!l.min);
   if(noMin.length)W.push({lvl:"warn",title:`${noMin.length} chặng chưa có số “Thời gian (phút)”`,body:"Máy đọc thời gian từ cột chữ “Giờ bay / giờ chạy phổ biến” và lấy cận trên.",items:noMin.map(l=>({label:`${l.name}: “${l.timeText}”`,url:l.url}))});
@@ -1543,8 +1556,8 @@ function renderTraceTab(R){
   <div class="card stepcard"><div class="stepno">1</div><div><h4>Tính quỹ thời gian</h4><ul class="small">${s1.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>
     ${fl.length?`<div class="srcs">${fl.map(l=>`<a href="${esc(l.url)}" target="_blank" rel="noopener">Chặng “${esc(l.name)}” ↗</a>`).join("")}</div>`:""}</div></div>
   <div class="card stepcard"><div class="stepno">2</div><div><h4>Chọn thứ tự tuyến và phân bổ đêm</h4>
-    <p class="small">Máy thử mọi thứ tự ghé ${R.route.p.length} điểm nghỉ đêm, cộng thời gian theo bảng Chặng di chuyển. Khi bằng nhau, ưu tiên thứ tự kết thúc ở điểm gần sân bay về (ngày bay về không có chặng dài), rồi ưu tiên đi chặng xa trước. Thứ tự nào làm khách trễ một dịch vụ có giờ cố định (bảng Lịch chạy dịch vụ) bị loại.</p>
-    <div class="tbl"><table><thead><tr><th>Thứ tự tuyến</th><th>Tổng di chuyển</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p class="small">Máy thử mọi thứ tự ghé ${R.route.p.length} điểm nghỉ đêm, cộng thời gian theo bảng Chặng di chuyển. Khi bằng nhau, ưu tiên để đêm cuối ở điểm xa rồi ngày cuối về thẳng sân bay (cách các tour đang bán thường xếp, thành phố có sân bay được nghỉ ở đầu hoặc giữa tuyến), rồi ưu tiên đi chặng xa trước. Thứ tự nào làm khách trễ một dịch vụ có giờ cố định (bảng Lịch chạy dịch vụ) bị loại.</p>
+    <div class="tbl"><table><thead><tr><th>Thứ tự tuyến</th><th>Tổng di chuyển</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>${R.trace.gwAlt?`<p class="small" style="margin-top:8px"><b>Gợi ý sân bay:</b> nếu bay ${esc(dn(R.trace.gwAlt.gi.id))} – về từ ${esc(dn(R.trace.gwAlt.gr.id))} thì tuyến ${esc(R.trace.gwAlt.p.map(dn).join(" → "))} chỉ mất ${Math.round(R.trace.gwAlt.m/6)/10} giờ di chuyển, ít hơn ${Math.round((best.m-R.trace.gwAlt.m)/6)/10} giờ so với chuyến bay đang chọn.</p>`:""}
     <ul class="small" style="margin-top:10px">${R.alloc.why.map(w=>`<li>${esc(w)}</li>`).join("")}</ul>
     <div class="srcs">${R.route.p.map(id=>`<a href="${esc(S.dById.get(id).url)}" target="_blank" rel="noopener">${esc(dn(id))} ↗</a>`).join("")}</div></div></div>
   <div class="card stepcard"><div class="stepno">3</div><div><h4>Lấp từng buổi</h4>
@@ -1657,6 +1670,8 @@ function render(R){
       <h2>${esc(head)} · ${req.days} ngày ${req.days-1} đêm</h2>
       <div class="meta">Khởi hành ${esc(R.days[0].wd)}, ${fmtDY(req.date)} từ ${esc(dn(req.origin))}${R.flightIn?` · bay ${esc(R.outF.label)}`:""}${R.flightOut?` · về ${esc(R.retF.label)}`:""} · ${visits} điểm tham quan · ${R.unplaced.length} điểm chưa xếp</div>
       ${nights}
+      <div class="sumact"><button type="button" class="btn sm" data-act="review">Đánh giá phương án này</button><span class="small muted">Dành cho đợt thử nghiệm: chấm mức phù hợp, ghi lỗi và góp ý.</span></div>
+      <div class="reviewbox" id="reviewBox" hidden></div>
     </section>
     <div class="tabs" role="tablist">
       <button role="tab" data-tab="plan" aria-selected="${state.tab==="plan"}">Lịch trình</button>
@@ -1731,20 +1746,23 @@ function refreshFlights(){
   if(!S)return;
   const stops=[...state.stops];
   const fo=$("#fOut"),fr=$("#fRet"),row=$("#flightRow");
-  if(!stops.length){row.hidden=true;return}
-  const routes=chooseRoute(state.origin,stops.slice(0,6));
-  const best=routes[0];
-  if(!best||!Number.isFinite(best.m)||(!best.gi.flight&&!best.gr.flight)){row.hidden=true;return}
+  const outs=S.L.filter(l=>l.mode==="Máy bay"&&l.from===state.origin&&l.to&&flightsOf(l).length);
+  const rets=S.L.filter(l=>l.mode==="Máy bay"&&l.to===state.origin&&l.from&&flightsOf(l).length);
+  if(!stops.length||(!outs.length&&!rets.length)){row.hidden=true;fo.innerHTML=fr.innerHTML="";return}
   row.hidden=false;
-  const fill=(sel,l,prefer)=>{
+  // mặc định: sân bay có nhiều chuyến nhất (thường là sân bay chính), giờ gần giờ ưu tiên
+  const main=ls=>ls.slice().sort((a,b)=>flightsOf(b).length-flightsOf(a).length)[0];
+  const gname=id=>{const d=S.dById.get(id);return d?`${d.gate?d.gate+" – ":""}${d.name}`:"?"};
+  const fill=(sel,ls,prefer,lab)=>{
     const prev=sel.value;
-    if(!l){sel.innerHTML=`<option value="">Không bay</option>`;sel.disabled=true;return}
-    const fs=flightsOf(l);sel.disabled=false;
-    sel.innerHTML=fs.map(f=>`<option>${esc(f.label)}</option>`).join("")||`<option value="">(Notion chưa có giờ bay)</option>`;
-    if(fs.some(f=>f.label===prev))sel.value=prev;
-    else{const p=fs.slice().sort((a,b)=>Math.abs(a.t-prefer)-Math.abs(b.t-prefer))[0];if(p)sel.value=p.label}
+    if(!ls.length){sel.innerHTML=`<option value="">Không bay</option>`;sel.disabled=true;return}
+    sel.disabled=false;
+    sel.innerHTML=ls.map(l=>`<optgroup label="${esc(lab(l))}">${flightsOf(l).map(f=>`<option value="${l.id}|${esc(f.label)}">${esc(f.label)}</option>`).join("")}</optgroup>`).join("");
+    if([...sel.options].some(o=>o.value===prev)){sel.value=prev;return}
+    const m=main(ls),p=flightsOf(m).slice().sort((a,b)=>Math.abs(a.t-prefer)-Math.abs(b.t-prefer))[0];
+    sel.value=`${m.id}|${p.label}`;
   };
-  fill(fo,best.gi.flight,360);fill(fr,best.gr.flight,1200);
+  fill(fo,outs,360,l=>"Đến "+gname(l.to));fill(fr,rets,1200,l=>"Bay về từ "+gname(l.from));
 }
 function updateHints(){
   const d=Math.max(2,Math.min(12,+$("#days").value||4));
@@ -1762,6 +1780,44 @@ function run(){
   render(R);
 }
 $("#form").addEventListener("submit",e=>{e.preventDefault();state.tab="plan";state.edits={removed:[],pins:[]};state.undo=[];state.flash=null;run()});
+
+/* ---------------- Phiếu đánh giá thử nghiệm ---------------- */
+const REVIEW_DB="ada7a6d3434b43e59966bfc984420778";
+function reviewText(R){
+  const req=R.req,L=[];
+  const E=req.edits||{pins:[],removed:[]};
+  L.push(`[Phương án] ${headName(R)} · ${req.days} ngày ${req.days-1} đêm`);
+  L.push(`Yêu cầu: khởi hành ${dn(req.origin)}, ${R.days[0].wd} ${fmtDY(req.date)}; nơi nghỉ đêm đã chọn: ${req.stops.map(dn).join(", ")}${R.flightIn?`; bay đi ${R.outF.label}`:""}${R.flightOut?`; bay về ${R.retF.label}`:""}; vận động tối đa: ${req.effort}.`);
+  L.push(`Tuyến máy chọn: ${R.alloc.al.map(x=>`${dn(x.id)} ${x.n} đêm`).join(" → ")}${R.alloc.manual?" (số đêm do nhân viên chỉnh)":""}.`);
+  for(const d of R.days){
+    const it=d.items.map(i=>i.type==="visit"?`${hm(i.start)} ${i.a.name}${i.user?" [chỉnh tay]":""}`:i.type==="transfer"?`${hm(i.start)} đi ${dn(i.to)}`:i.type==="anchor"?`${hm(i.dep.t)} ${i.dep.r.name}`:i.type==="flight"?`${hm(i.start)} bay ${i.f.code||""}`:null).filter(Boolean);
+    L.push(`Ngày ${d.k} (${d.wd} ${fmtD(d.date)}): ${it.join("; ")||"không có hoạt động"}${d.stay?`. Nghỉ ${dn(d.stay)}`:""}.`);
+  }
+  const ed=[...E.removed.map(id=>`bỏ ${(S.aById.get(id)||{}).name}`),...E.pins.map(([id,p])=>`${p.added?"chèn":"sửa giờ"} ${(S.aById.get(id)||{}).name} ngày ${p.k}${p.loc==="route"?" (dọc đường)":` lúc ${hm(p.start)}`}, ${p.dur} phút`)];
+  L.push(`Chỉnh tay (${ed.length}): ${ed.join("; ")||"không"}.`);
+  if(R.unplaced.length)L.push(`Điểm chưa xếp: ${R.unplaced.slice(0,12).map(u=>u.a.name).join(", ")}${R.unplaced.length>12?"…":""}.`);
+  if(R.warnings.length)L.push(`Cảnh báo dữ liệu: ${R.warnings.map(w=>w.title).join("; ")}.`);
+  const meta=S.syncedAt?new Date(S.syncedAt):null;
+  L.push(`Bản dữ liệu: ${meta?`${pad(meta.getDate())}/${pad(meta.getMonth()+1)}/${meta.getFullYear()}`:"?"} · ${location.hostname||"app"}`);
+  return{text:L.join("\n"),edits:ed.length};
+}
+function openReview(btn){
+  const R=state.last;if(!R)return;
+  const box=$("#reviewBox");if(!box)return;
+  if(!box.hidden){box.hidden=true;return}
+  const{text,edits}=reviewText(R);
+  box.hidden=false;
+  box.innerHTML=`<p class="small"><b>Gửi đánh giá:</b> ${edits?`phương án có ${edits} chỉnh tay (ghi vào ô “Số mục đã chỉnh tay”). `:""}Mở bảng “9. Đánh giá thử nghiệm”, bấm <b>New</b>, dán nội dung dưới đây vào ô <b>Phương án (dán từ app)</b>, đặt tên ngắn cho phương án rồi chấm các mục.</p>
+    <textarea readonly rows="7" aria-label="Nội dung phương án để dán vào phiếu">${esc(text)}</textarea>
+    <div class="actions"><button type="button" class="btn sm" data-act="copyreview">Sao chép nội dung</button><a class="btn sm" href="${NOTION_P}${REVIEW_DB}" target="_blank" rel="noopener">Mở bảng đánh giá trên Notion ↗</a><span class="small muted" id="reviewMsg"></span></div>`;
+  copyReview();
+}
+async function copyReview(){
+  const ta=$("#reviewBox textarea");if(!ta)return;const msg=$("#reviewMsg");
+  try{await navigator.clipboard.writeText(ta.value);if(msg)msg.textContent="Đã sao chép."}
+  catch(e){ta.focus();ta.select();if(msg)msg.textContent="Đã chọn sẵn nội dung, nhấn Ctrl/⌘+C để sao chép."}
+}
+
 /* ---------------- Chỉnh tay trên lịch ---------------- */
 const parseHM=v=>{const m=String(v||"").match(/^(\d{1,2}):(\d{2})/);return m?+m[1]*60+ +m[2]:null};
 function applyEdit(fn,flash){
@@ -1784,7 +1840,7 @@ function openInsert(k,t,preId,btn){
   const R=state.last;const groups=insCandidates(R,k);
   const def=R.req.defDur;
   const inner=groups.length?`<form class="ins" data-k="${k}">
-    <label>Điểm tham quan<select name="a">${groups.map(g=>`<optgroup label="${esc(g.label)}">${g.items.map(a=>`<option value="${a.id}|${g.loc}" data-dur="${a.dur||def}"${a.id===preId?" selected":""}>${esc(a.name)} · ★${a.score}${a.mode==="Tùy chọn"?" · tùy chọn":""}${state.edits.removed.includes(a.id)?" · đã bỏ trước đó":""}</option>`).join("")}</optgroup>`).join("")}</select></label>
+    <label>Điểm tham quan<select name="a">${groups.map(g=>`<optgroup label="${esc(g.label)}">${g.items.map(a=>`<option value="${a.id}|${g.loc}" data-dur="${a.dur||a.durEst||def}"${a.id===preId?" selected":""}>${esc(a.name)} · ★${a.score}${a.mode==="Tùy chọn"?" · tùy chọn":""}${state.edits.removed.includes(a.id)?" · đã bỏ trước đó":""}</option>`).join("")}</optgroup>`).join("")}</select></label>
     <label>Bắt đầu<input type="time" name="start" step="300" value="${hm(Math.min(t,1435))}"></label>
     <label>Thời lượng (phút)<input type="number" name="dur" min="10" step="5" value="${def}"></label>
     <button class="btn sm" type="submit">Chèn và tính lại</button><button class="btn sm" type="button" data-act="cancel">Huỷ</button>
@@ -1808,6 +1864,8 @@ $("#out").addEventListener("click",e=>{
   else if(act==="ins")openInsert(+b.dataset.k,+b.dataset.t,id||null,b);
   else if(act==="undo"){if(state.undo.length){state.edits=JSON.parse(state.undo.pop());state.flash=null;const y=window.scrollY;run();window.scrollTo(0,y)}}
   else if(act==="reset")applyEdit(E=>{E.pins=[];E.removed=[]});
+  else if(act==="review")openReview(b);
+  else if(act==="copyreview")copyReview();
 });
 $("#out").addEventListener("submit",e=>{
   const f=e.target;
@@ -1858,7 +1916,7 @@ async function start(){
   for(const k of ["toa-do","quy-tac","lich-chay"]){try{docs[k]=await fetch("data/"+k+".json",{cache:"no-cache"}).then(r=>r.ok?r.json():null)}catch(e){}}
   S=compileRules(index(fromStore(docs)));
   S.coords=new Map(((docs["toa-do"]||{}).rows||[]).map(r=>[r.id,r]));
-  const at=docs.meta&&docs.meta.syncedAt?new Date(docs.meta.syncedAt):null;
+  const at=docs.meta&&docs.meta.syncedAt?new Date(docs.meta.syncedAt):null;S.syncedAt=docs.meta&&docs.meta.syncedAt;
   setStatus("ok",`${S.A.length} điểm tham quan${at?` · dữ liệu chép từ Notion ngày ${pad(at.getDate())}/${pad(at.getMonth()+1)}/${at.getFullYear()}`:""}`);
   setupForm();
   run();
