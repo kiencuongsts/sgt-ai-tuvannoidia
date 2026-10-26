@@ -35,6 +35,16 @@ Bảng “7. Quy tắc thiết kế” trên Notion chứa các quy tắc nhân 
 
 Mức “Bắt buộc” thì máy loại hẳn; mức “Ưu tiên” thì máy chỉ xếp khi buổi đó không còn điểm nào khác. Loại “Khác (chưa tự động)” chỉ hiển thị trong tab “Quy tắc” để nhân viên tham khảo. Mỗi điểm bị ảnh hưởng đều ghi rõ quy tắc trong phần “Vì sao chọn” hoặc “Điểm chưa xếp”, kèm link tới dòng quy tắc.
 
+## Chỉnh tay trên lịch
+
+Mỗi điểm tham quan trong tab “Lịch trình” có ba thao tác: **Sửa giờ** (giờ bắt đầu, thời lượng), **Chèn điểm sau** và **Bỏ khỏi lịch**; cuối mỗi ngày có **Chèn điểm vào ngày này**, gợi ý tùy chọn có **Đưa vào lịch**.
+
+- Chỉnh sửa được lưu thành ràng buộc rồi máy chạy lại toàn bộ: mục chỉnh tay giữ đúng giờ đặt, các hoạt động phía sau (bữa ăn, giờ xuất phát, điểm khác, mốc giờ tàu) được tính lại. Điểm máy tự xếp phải xong trước giờ của mục chỉnh tay.
+- Điểm bị bỏ không được máy xếp lại; chỗ trống được lấp bằng điểm phù hợp kế tiếp. Có nút “Đưa lại cho máy xếp” trong danh sách điểm chưa xếp.
+- Danh sách chèn gồm các điểm chưa có trong lịch tại nơi khách ở trong ngày và dọc đường (kể cả điểm “Tùy chọn” và điểm đã bỏ).
+- Máy vẫn xếp theo ý nhân viên nhưng gắn nhãn “Cần xem lại” khi thấy chỗ chưa khớp dữ liệu: ngoài giờ mở cửa, ngày đóng cửa, khác khung giờ phù hợp, vi phạm quy tắc, lệch giờ chạy cố định, hoặc làm trễ giờ tới nơi nghỉ / giờ ra sân bay / giờ tàu.
+- Có **Hoàn tác** từng bước và **Bỏ mọi chỉnh sửa**. Chỉnh sửa giữ nguyên khi đổi số đêm, mất khi bấm “Thiết kế lịch trình” với yêu cầu mới, và chưa được lưu lại sau khi tải lại trang.
+
 ## Mốc giờ cố định (Lịch chạy dịch vụ)
 
 Bảng “8. Lịch chạy dịch vụ” ghi các dịch vụ có giờ cố định. Mỗi dòng gắn với một **chặng** (tàu, thuyền, xe theo giờ) hoặc một **điểm tham quan** có suất (show, chương trình trên tàu, có thể giới hạn bằng cột “Khi ở tại”).
