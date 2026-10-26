@@ -12,8 +12,15 @@ data/
   chang.json            3. Chặng di chuyển (thời gian, km, giờ bay, điểm ghé dọc đường)
   ngoai-le.json         4. Lịch ngoại lệ (đóng cửa, trùng tu, phương án thay thế)
   khoi-ngay.json        5. Khối ngày (dùng để đối chiếu bữa ăn)
+  toa-do.json           Tọa độ 121 địa điểm cho bản đồ (ước tính, chưa có trên Notion)
   meta.json             Thời điểm chép dữ liệu từ Notion
 ```
+
+## Bản đồ hành trình
+
+Tab “Lịch trình” có bản đồ three.js vẽ đường nối thẳng các điểm theo đúng thứ tự trong lịch máy gợi ý: chọn từng ngày, xem toàn tuyến, vẽ lại, phóng to/thu nhỏ, toàn màn hình. Nền bản đồ lấy từ Natural Earth 1:10m (đã chỉnh để quần đảo Hoàng Sa và Trường Sa thể hiện thuộc Việt Nam).
+
+Tọa độ trong `data/toa-do.json` do Claude ước tính; các dòng `chk: true` cần xác minh. Nên bổ sung cột tọa độ trên Notion để thay thế dần.
 
 Dữ liệu được chép từ trang Notion “Hệ thống thiết kế tour tự động – Dữ liệu điểm tham quan Việt Nam”. Mỗi dòng giữ mã trang Notion, nên link “minh chứng” trên giao diện mở đúng dòng gốc (người xem cần quyền truy cập Notion để mở).
 

@@ -863,7 +863,7 @@ const TourMap=(()=>{
       <div class="tm-days" role="group" aria-label="Chọn ngày">${days.map((d,i)=>`<button type="button" class="tm-day" data-i="${i}" aria-pressed="false" aria-label="Ngày ${d.k}">${d.k}</button>`).join("")}</div>
       <div class="tm-legend" aria-hidden="true"><span><i class="lg-road"></i>Đường bộ</span>${hasFly?'<span><i class="lg-fly"></i>Máy bay</span>':""}<span><i class="lg-stay"></i>Nghỉ đêm</span><span><i class="lg-stop"></i>Tham quan</span></div>
     </div>
-    <p class="tm-note">Đường nối thẳng giữa các điểm theo thứ tự trong lịch, không phải đường đi thực tế. Tọa độ tra từ OpenStreetMap${fallbackPts.length?`; ${fallbackPts.length} điểm chưa có tọa độ riêng nên đặt tạm tại vị trí điểm đến`:""}${missing.length?`; ${missing.length} điểm không có tọa độ nên không vẽ`:""}.</p>`;
+    <p class="tm-note">Đường nối thẳng giữa các điểm theo thứ tự trong lịch, không phải đường đi thực tế. Tọa độ do Claude ước tính, chưa kiểm duyệt (xem tab Cảnh báo dữ liệu)${fallbackPts.length?`; ${fallbackPts.length} điểm chưa có tọa độ riêng nên đặt tạm tại vị trí điểm đến`:""}${missing.length?`; ${missing.length} điểm không có tọa độ nên không vẽ`:""}.</p>`;
     const box=host.querySelector(".tm"),canvas=box.querySelector("canvas"),labels=box.querySelector(".tm-labels");
     const renderer=new T.WebGLRenderer({canvas,antialias:true});
     renderer.setPixelRatio(Math.min(2,window.devicePixelRatio||1));
