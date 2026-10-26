@@ -510,7 +510,7 @@ function fillAt(ctx,day,loc,t,until){
     const fits=[];
     for(const a of ctx.byDest(loc)){
       if(ctx.used.has(a.id))continue;
-      if(a.mode==="Tùy chọn"){if(a.slots.includes(s)){const el=eligible(ctx,a,day);if(el.ok&&!day.optional.some(o=>o.a.id===a.id))day.optional.push({a,ses:s})}continue}
+      if(a.mode==="Tùy chọn"){if(a.slots.includes(s)){const el=eligible(ctx,a,day);const rs=ranges(a.open),w=WIN[s];const hoursOk=!rs.length||rs.some(r=>r.s<w[1]&&r.e>w[0]);if(!hoursOk)noteEx(ctx,a,{kind:"hours",why:`Khung giờ ghi “${a.slots.join(", ")}” nhưng giờ mở cửa “${a.open}” không rơi vào buổi ${s}. Dữ liệu mâu thuẫn, máy không gợi ý vào buổi này.`,date:day.date});if(el.ok&&hoursOk&&!day.optional.some(o=>o.a.id===a.id))day.optional.push({a,ses:s})}continue}
       if(!a.slots.includes(s))continue;
       const el=eligible(ctx,a,day);
       if(!el.ok){noteEx(ctx,a,{...el,date:day.date});continue}
