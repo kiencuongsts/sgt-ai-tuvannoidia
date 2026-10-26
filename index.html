@@ -927,6 +927,7 @@ const TourMap=(()=>{
     const toScreen=p=>{const[x,y]=W2(p);return[(x-(view.cx-view.span/2))/view.span*W,H-(y-(view.cy-view.span*H/W/2))/(view.span*H/W)*H]};
     function fitView(pts){
       if(!pts.length)return{...view};
+      {const las=pts.map(p=>p.lat);if(Math.max(...las)-Math.min(...las)>6)pts=pts.concat([{lat:17.0,lon:112.4},{lat:8.9,lon:115.9}]);}
       const xs=pts.map(p=>W2(p)[0]),ys=pts.map(p=>W2(p)[1]);
       const x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys);
       const top=W<520?112:122,bot=62,side=W<520?36:64;
