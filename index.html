@@ -183,6 +183,11 @@ pre.text{white-space:pre-wrap;font:400 13.5px/1.6 var(--f-ui);background:var(--s
 .lg-fly{width:16px;height:0;border-top:2px dashed var(--flight)}
 .lg-stay{width:10px;height:10px;border-radius:50%;background:var(--route);box-shadow:0 0 0 2px var(--surface),0 0 0 3px var(--route)}
 .lg-stop{width:9px;height:9px;border-radius:50%;border:2px solid var(--route);background:var(--surface)}
+.tm-plane{position:absolute;left:0;top:0;width:24px;height:24px;margin:-12px 0 0 -12px;color:var(--flight);filter:drop-shadow(0 1px 1px var(--map-shadow))}
+.tm-plane svg{width:24px;height:24px;fill:currentColor}
+.tm-fly{position:absolute;left:0;top:0;display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px 0 6px;border-radius:999px;background:var(--flight);color:var(--surface);font-size:11.5px;font-weight:600;white-space:nowrap;box-shadow:0 1px 3px var(--map-shadow)}
+.tm-fly svg{width:14px;height:14px;fill:currentColor;transform:rotate(90deg)}
+.tm-fly.edge{background:var(--surface);color:var(--flight);border:1.5px dashed var(--flight)}
 .tm-note{margin:0;font-size:12px;color:var(--muted)}
 .tm-off{padding:16px;border:1px dashed var(--line);border-radius:var(--r);color:var(--muted);font-size:13px}
 .tm:fullscreen{height:100%;border-radius:0}
@@ -809,11 +814,11 @@ function mapDays(R){
     ev.sort((x,y)=>x.t-y.t||x.o-y.o);
     const legs=[];let road=null,cur=null,n=0;const missing=[];
     const mk=(kind,id,type,name,num)=>{const c=coordOf(kind,id);if(!c){missing.push(name);return null}return{key:kind+id,kind,id,type,name,num,lat:c.lat,lon:c.lon,fallback:c.fallback,src:c.src}};
-    const destPt=id=>mk("D",id,stays.has(id)?"stay":"city",dn(id));
+    const destPt=(id,air)=>{const p=mk("D",id,stays.has(id)?"stay":"city",dn(id));const g=(S.dById.get(id)||{}).gate;if(p&&air&&g)p.air=g;return p};
     const add=p=>{if(!p)return;if(!road){road={mode:"road",pts:[]};legs.push(road);if(cur)road.pts.push(cur)}if(!cur||cur.key!==p.key)road.pts.push(p);cur=p};
     if(!(d.k===1&&R.flightIn))cur=destPt(d.from);
     for(const e of ev){
-      if(e.kind==="flight"){const a=destPt(e.it.from),b=destPt(e.it.to);if(a&&b){legs.push({mode:"flight",pts:[a,b],label:e.it.f.code});road=null;cur=b}}
+      if(e.kind==="flight"){const a=destPt(e.it.from,true),b=destPt(e.it.to,true);if(a&&b){legs.push({mode:"flight",pts:[a,b],label:e.it.f.code||"",time:hm(e.it.f.t)});road=null;cur=b}}
       else if(e.kind==="arrive")add(destPt(e.id));
       else add(mk("A",e.a.id,"stop",e.a.name,++n));
     }
@@ -823,7 +828,11 @@ function mapDays(R){
     const km=d.items.filter(i=>i.type==="transfer").reduce((s,i)=>s+(i.l.km||0),0);
     const fly=legs.find(l=>l.mode==="flight");
     const pts=[];const seen=new Set();legs.forEach(l=>l.pts.forEach(p=>{if(!seen.has(p.key)){seen.add(p.key);pts.push(p)}}));
-    return{k:d.k,date:d.date,wd:d.wd,title:dayTitle(d,R,d.k,R.req.days).join(" – "),legs,pts,km,fly:fly?fly.label:null,stay:d.stay,missing};
+    const phases=[];
+    for(const l of legs){if(l.skip)continue;const kind=l.mode==="flight"?"flight":"ground";const last=phases[phases.length-1];if(last&&last.kind===kind)last.legs.push(l);else phases.push({kind,legs:[l]})}
+    phases.forEach(p=>{p.pts=p.legs.flatMap(l=>l.pts)});
+    if(!phases.length)phases.push({kind:"ground",legs:[],pts});
+    return{k:d.k,date:d.date,wd:d.wd,title:dayTitle(d,R,d.k,R.req.days).join(" – "),legs,phases,pts,km,fly:fly?`${fly.label} ${fly.time}`.trim():null,stay:d.stay,missing};
   });
 }
 function cssVar(n,f){const v=getComputedStyle(document.documentElement).getPropertyValue(n).trim();return v||f}
@@ -834,6 +843,7 @@ const SVG={
   in:'<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
   fs:'<svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>'
 };
+const PLANE='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z"/></svg>';
 const TourMap=(()=>{
   let inst=null;
   function mount(host,R){
@@ -869,7 +879,7 @@ const TourMap=(()=>{
     renderer.setPixelRatio(Math.min(2,window.devicePixelRatio||1));
     const scene=new T.Scene();
     const cam=new T.OrthographicCamera(-1,1,1,-1,-10,10);
-    let W=1,H=1,view={cx:105.8,cy:mercY(16),span:12},anim=null,raf=0,active=0,allMode=false,prog=1,progStart=0;
+    let W=1,H=1,view={cx:105.8,cy:mercY(16),span:12},anim=null,raf=0,active=0,allMode=false,prog=1,progStart=0,ph=0,restDone=true;
     const reduce=window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches;
     let col={};
     const readCols=()=>{col={sea:cssVar("--map-sea","#dcebf1"),land:cssVar("--map-land","#ede8df"),home:cssVar("--map-home","#fffdf8"),coast:cssVar("--map-coast","#c4b6a3"),border:cssVar("--map-border","#c9a27a"),route:cssVar("--route","#d9731a"),fade:cssVar("--route-fade","#e9b98c"),fly:cssVar("--flight","#1a1a2e")}};
@@ -926,26 +936,31 @@ const TourMap=(()=>{
     const ease=t=>t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2;
     function flyTo(v){if(reduce){view=v;rebuild();return}const from={...view},t0=performance.now();anim={from,to:v,t0,dur:850};kick()}
     // ---- drawing
-    function dayPtsUpTo(i){
-      if(allMode)return days.flatMap(d=>d.pts);
-      const d=days[i];const ground=d.legs.filter(l=>l.mode!=="flight"&&!l.skip).flatMap(l=>l.pts);
-      return ground.length?ground:d.pts;
-    }
+    const restPts=d=>{const g=d.phases.filter(p=>p.kind==="ground").flatMap(p=>p.pts);return g.length>1||!d.phases.some(p=>p.kind==="flight")?(g.length?g:d.pts):d.pts};
+    const phasePts=(d,i)=>{const p=d.phases[i];if(!p)return d.pts;if(p.kind==="flight"){const pts=p.pts.slice();p.legs.forEach(l=>{const m=arcMid(l);if(m)pts.push(m)});return pts}return p.pts.length>1?p.pts:restPts(d)};
+    const arcMid=l=>{const a=arcOf(l);if(!a)return null;const m=a[20];return{lat:invMerc(m[1]),lon:m[0]}};
+    const invMerc=y=>Math.atan(Math.sinh(y*Math.PI/180))*180/Math.PI;
+    const arcOf=l=>{if(l.mode!=="flight"||l.pts.length<2)return null;if(!l._arc)l._arc=arc(W2(l.pts[0]),W2(l.pts[1]));return l._arc};
+    const PH_DUR={flight:1200,ground:1300};
     function rebuild(){
       applyCam();
       while(routes.children.length){const m=routes.children.pop();m.geometry.dispose();m.material.dispose()}
-      const w=Math.max(2.2,3.2)*wpp(),wf=2*wpp();
+      const w=3.2*wpp(),wf=2.6*wpp();
       days.forEach((d,j)=>{
         if(!allMode&&j>active)return;
         const isCur=allMode||j===active;
-        const f=isCur&&!allMode?prog:1;
         const color=isCur?col.route:col.fade,op=isCur?1:.7;
-        d.legs.forEach(l=>{
-          if(l.skip||l.pts.length<2)return;
-          if(l.mode==="flight"){
-            const pts=cut(arc(W2(l.pts[0]),W2(l.pts[1])),f);
-            for(const s of dashes(pts,10*wpp(),7*wpp())){const m=ribbon(s,wf,isCur?col.fly:col.fade,isCur?.9:.5,.1);if(m)routes.add(m)}
-          }else{const m=ribbon(cut(l.pts.map(W2),f),w,color,op,isCur?.12:.11);if(m)routes.add(m)}
+        d.phases.forEach((p,pi)=>{
+          let f=1;
+          if(isCur&&!allMode){if(pi>ph)return;if(pi===ph)f=prog}
+          if(f<=0)return;
+          p.legs.forEach(l=>{
+            if(l.skip||l.pts.length<2)return;
+            if(l.mode==="flight"){
+              const pts=cut(arcOf(l),f);
+              for(const s of dashes(pts,9*wpp(),6*wpp())){const m=ribbon(s,wf,isCur?col.fly:col.fade,isCur?.95:.55,.1);if(m)routes.add(m)}
+            }else{const m=ribbon(cut(l.pts.map(W2),f),w,color,op,isCur?.12:.11);if(m)routes.add(m)}
+          });
         });
       });
       placeLabels();
@@ -969,13 +984,52 @@ const TourMap=(()=>{
         const cls=`tm-pt ${o.p.type==="stop"?"stop":o.p.type==="stay"?"stay":"city"}${o.cur?"":" past"}${o.p.fallback?" est":""}`;
         html.push(`<i class="${cls}" style="transform:translate(${sx.toFixed(1)}px,${sy.toFixed(1)}px)"></i>`);
         if(!o.showLabel)continue;
-        const text=(o.p.num&&!allMode&&o.cur?o.p.num+". ":"")+o.p.name;
+        const text=(o.p.num&&!allMode&&o.cur?o.p.num+". ":"")+o.p.name+(o.p.air?` (${o.p.air})`:"");
         const w=Math.min(220,Math.ceil(text.length*(o.p.type==="stay"?7.6:7.1)+20)),h=22;
         const cands=[[sx+9,sy-h/2],[sx-9-w,sy-h/2],[sx-w/2,sy-h-8],[sx-w/2,sy+8]];
         let pos=null;for(const[x,y]of cands){const r={x,y,w,h};if(x<4||x+w>W-4||y<4||y+h>H-4)continue;if(!hit(r)||o.p.type==="stay"){pos=r;break}}
         if(!pos)continue;rects.push(pos);
         html.push(`<span class="tm-lbl ${o.p.type}${o.cur?"":" past"}" style="transform:translate(${pos.x.toFixed(1)}px,${pos.y.toFixed(1)}px);max-width:${w}px">${esc(text)}</span>`);
       }
+      // ---- flights: plane while drawing, code + time when done, edge chip when an end is off-screen
+      const inView=(x,y,m)=>x>=m&&x<=W-m&&y>=m&&y<=H-m;
+      const toS=q=>[(q[0]-(view.cx-view.span/2))/view.span*W,H-(q[1]-(view.cy-view.span*H/W/2))/(view.span*H/W)*H];
+      days.forEach((d,j)=>{
+        if(!allMode&&j!==active)return;
+        d.phases.forEach((p,pi)=>{
+          if(p.kind!=="flight")return;
+          let f=1;if(!allMode){if(pi>ph)return;if(pi===ph)f=prog}
+          if(f<=0)return;
+          p.legs.forEach(l=>{
+            const a=arcOf(l);if(!a)return;const sp=a.map(toS);
+            const code=`${l.label||"Chuyến bay"}${l.time?" · "+l.time:""}`;
+            if(f<1){
+              const c=cut(a,f);const h=toS(c[c.length-1]),h0=toS(c[Math.max(0,c.length-2)]);
+              const ang=Math.atan2(h[1]-h0[1],h[0]-h0[0])*180/Math.PI+90;
+              if(inView(h[0],h[1],0))html.push(`<span class="tm-plane" style="transform:translate(${h[0].toFixed(1)}px,${h[1].toFixed(1)}px) rotate(${ang.toFixed(0)}deg)">${PLANE}</span>`);
+              return;
+            }
+            const chipW=Math.min(240,code.length*7+34),chipH=22;
+            const m=sp[20];
+            if(inView(m[0],m[1],chipW/2+6)){
+              const r={x:m[0]-chipW/2,y:m[1]-chipH-6,w:chipW,h:chipH};
+              if(!hit(r)){rects.push(r);html.push(`<span class="tm-fly" style="transform:translate(${r.x.toFixed(1)}px,${r.y.toFixed(1)}px)">${PLANE}${esc(code)}</span>`)}
+              return;
+            }
+            // edge chip: walk from the visible end toward the hidden one
+            const aIn=inView(sp[0][0],sp[0][1],0),bIn=inView(sp[sp.length-1][0],sp[sp.length-1][1],0);
+            if(aIn===bIn)return;
+            const seq=aIn?sp:sp.slice().reverse();const other=aIn?l.pts[1]:l.pts[0];
+            let k=0;while(k<seq.length-1&&inView(seq[k+1][0],seq[k+1][1],18))k++;
+            const e=seq[k];
+            const txt=`${l.label||"Bay"} · ${aIn?"đến":"từ"} ${other.name}`;
+            const ew=Math.min(260,txt.length*7+34);
+            const x=Math.max(8,Math.min(W-ew-8,e[0]-ew/2)),y=Math.max(8,Math.min(H-chipH-8,e[1]-chipH/2));
+            const r={x,y,w:ew,h:chipH};rects.push(r);
+            html.push(`<span class="tm-fly edge" style="transform:translate(${x.toFixed(1)}px,${y.toFixed(1)}px)">${PLANE}${esc(txt)}</span>`);
+          });
+        });
+      });
       labels.innerHTML=html.join("");
     }
     function setNow(){
@@ -989,10 +1043,19 @@ const TourMap=(()=>{
     function select(i,opts={}){
       allMode=i==="all";if(!allMode)active=Math.max(0,Math.min(days.length-1,i));
       setNow();
-      prog=reduce||allMode?1:0;progStart=performance.now();
-      const target=fitView(dayPtsUpTo(active));
-      if(opts.instant){view=target;rebuild()}else flyTo(target);
+      const d=days[active];
+      let target;
+      if(allMode){ph=0;prog=1;restDone=true;target=fitView(days.flatMap(x=>x.pts))}
+      else if(reduce){ph=d.phases.length-1;prog=1;restDone=true;target=fitView(restPts(d))}
+      else{ph=0;prog=0;restDone=false;progStart=performance.now();target=fitView(phasePts(d,0))}
+      if(opts.instant){anim=null;view=target;rebuild()}else flyTo(target);
       kick();
+    }
+    function advance(now){
+      const d=days[active];
+      if(ph<d.phases.length-1){ph++;prog=0;progStart=now;anim={from:{...view},to:fitView(phasePts(d,ph)),t0:now,dur:900};return true}
+      if(!restDone){restDone=true;const rv=fitView(restPts(d));if(Math.abs(Math.log(rv.span/view.span))>.05||Math.abs(rv.cx-view.cx)>view.span*.05){anim={from:{...view},to:rv,t0:now,dur:900};return true}}
+      return false;
     }
     // ---- loop
     function frame(now){
@@ -1001,8 +1064,9 @@ const TourMap=(()=>{
         const lf=Math.log(anim.from.span),lt=Math.log(anim.to.span);
         view={cx:anim.from.cx+(anim.to.cx-anim.from.cx)*e,cy:anim.from.cy+(anim.to.cy-anim.from.cy)*e,span:Math.exp(lf+(lt-lf)*e)};
         if(t>=1)anim=null;else more=true}
-      if(prog<1&&!anim){prog=Math.min(1,(now-progStart-0)/1300);if(prog<1)more=true}
-      else if(prog<1&&anim){progStart=now}
+      if(anim){if(prog<1)progStart=now}
+      else if(!allMode&&prog<1){const p=days[active].phases[ph];prog=Math.min(1,(now-progStart)/PH_DUR[p?p.kind:"ground"]);more=true}
+      else if(!allMode&&prog>=1&&advance(now))more=true;
       rebuild();
       if(more)kick();
     }
@@ -1027,7 +1091,7 @@ const TourMap=(()=>{
     const onKey=e=>{if(e.key==="Escape"&&box.classList.contains("tm-fsfb")){box.classList.remove("tm-fsfb");document.body.classList.remove("tm-lock")}};
     document.addEventListener("keydown",onKey);
     box.querySelector(".tm-tools").addEventListener("click",e=>{const b=e.target.closest("[data-act]");if(!b)return;const a=b.dataset.act;
-      if(a==="all")select(allMode?active:"all");else if(a==="replay"){if(allMode)select(active);else{prog=0;progStart=performance.now();kick()}}
+      if(a==="all")select(allMode?active:"all");else if(a==="replay")select(active);
       else if(a==="in")zoomBy(1/1.6);else if(a==="out")zoomBy(1.6);else if(a==="fs")toggleFs()});
     box.querySelector(".tm-days").addEventListener("click",e=>{const b=e.target.closest(".tm-day");if(b)select(+b.dataset.i)});
     const ro=new ResizeObserver(()=>resize());ro.observe(box);
@@ -1039,7 +1103,7 @@ const TourMap=(()=>{
     scene.background=new T.Color(col.sea);
     // first frame
     const r0=box.getBoundingClientRect();W=Math.max(1,Math.round(r0.width));H=Math.max(1,Math.round(r0.height));renderer.setSize(W,H,false);
-    select(0,{instant:true});prog=reduce?1:0;progStart=performance.now();kick();
+    select(0,{instant:true});
     return{
       select:i=>select(i),
       destroy(){cancelAnimationFrame(raf);ro.disconnect();themeObs.disconnect();document.removeEventListener("keydown",onKey);document.removeEventListener("fullscreenchange",onFsChange);if(mq&&mq.removeEventListener)mq.removeEventListener("change",recolor);
