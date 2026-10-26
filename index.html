@@ -1,0 +1,1043 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="description" content="Demo trợ lý thiết kế tour: gợi ý lịch trình kèm lý do và minh chứng từ dữ liệu điểm tham quan.">
+<title>Trợ lý thiết kế tour</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: bàn làm việc 2 cột — phiếu yêu cầu bên trái (dính), lịch trình + diễn giải bên phải; 1 cột trên điện thoại */
+:root{
+  --bg:#F3F6F4; --surface:#FFFFFF; --sunk:#EAF0EC; --ink:#15211C; --muted:#5A6A63; --line:#D9E2DD;
+  --accent:#0D6B56; --accent-ink:#FFFFFF; --accent-soft:#DDEFE8;
+  --evid:#33449E; --evid-soft:#E7EAF8;
+  --warn:#9A5800; --warn-soft:#FFF1DA; --bad:#B0261D; --bad-soft:#FBE6E3;
+  --sang:#B7791F; --chieu:#0D6B56; --toi:#4B4FA8;
+  --f-ui:"Be Vietnam Pro",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --r:10px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0E1412; --surface:#151D1A; --sunk:#111816; --ink:#E2EAE6; --muted:#90A19A; --line:#25312C;
+  --accent:#4DC2A1; --accent-ink:#06231B; --accent-soft:#16342B;
+  --evid:#A3B0F7; --evid-soft:#1D2340;
+  --warn:#F1B65C; --warn-soft:#33260F; --bad:#F28B82; --bad-soft:#3A1B19;
+  --sang:#E3AE57; --chieu:#4DC2A1; --toi:#A3A6F2; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0E1412; --surface:#151D1A; --sunk:#111816; --ink:#E2EAE6; --muted:#90A19A; --line:#25312C;
+  --accent:#4DC2A1; --accent-ink:#06231B; --accent-soft:#16342B;
+  --evid:#A3B0F7; --evid-soft:#1D2340;
+  --warn:#F1B65C; --warn-soft:#33260F; --bad:#F28B82; --bad-soft:#3A1B19;
+  --sang:#E3AE57; --chieu:#4DC2A1; --toi:#A3A6F2; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:400 14.5px/1.55 var(--f-ui);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 48px}
+a{color:var(--evid);text-underline-offset:2px}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+.wrap{max-width:1260px;margin:0 auto}
+.top{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center;justify-content:space-between;padding-block:18px 14px;border-bottom:1px solid var(--line);margin-bottom:20px}
+.brand{display:flex;flex-direction:column;gap:2px;min-width:0}
+.brand h1{margin:0;font-size:20px;font-weight:700;letter-spacing:-.01em}
+.brand p{margin:0;color:var(--muted);font-size:13px}
+.status{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;font-size:12.5px;background:var(--sunk);color:var(--muted);border:1px solid var(--line)}
+.pill .dot{width:7px;height:7px;border-radius:50%;background:var(--muted)}
+.pill.ok .dot{background:var(--accent)} .pill.warn .dot{background:var(--warn)} .pill.bad .dot{background:var(--bad)}
+.pill.loading .dot{animation:pulse 1s infinite alternate}
+@keyframes pulse{to{opacity:.25}}
+@media (prefers-reduced-motion:reduce){.pill.loading .dot{animation:none}}
+.btn{border:1px solid var(--line);background:var(--surface);padding:7px 12px;border-radius:8px;cursor:pointer;font-weight:500;font-size:13.5px}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600;padding:10px 14px;width:100%;font-size:14.5px}
+.btn.primary:disabled{opacity:.5;cursor:not-allowed}
+.btn.sm{padding:4px 9px;font-size:12.5px}
+.grid{display:grid;grid-template-columns:320px minmax(0,1fr);gap:24px;align-items:start}
+@media (max-width:920px){.grid{grid-template-columns:minmax(0,1fr)}}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:18px}
+aside.panel{position:sticky;top:calc(env(safe-area-inset-top,0px) + 12px)}
+@media (max-width:920px){aside.panel{position:static}}
+.panel h2{margin:0 0 14px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
+.f{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.f>label,.f>.lbl{font-weight:600;font-size:13px}
+.f .hint{font-size:12px;color:var(--muted)}
+.f input[type=number],.f input[type=date],.f select{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:8px 10px;width:100%}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);background:var(--bg);border-radius:999px;padding:4px 10px;font-size:13px;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{flex:1;border:0;background:var(--bg);padding:7px 0;cursor:pointer;font-size:13px}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);font-weight:600}
+details.adv{margin:4px 0 16px;font-size:13px}
+details.adv summary{cursor:pointer;color:var(--muted)}
+details.adv .row2{margin-top:10px}
+main{min-width:0;display:flex;flex-direction:column;gap:16px}
+.empty{padding:40px 24px;text-align:center;color:var(--muted)}
+.empty strong{display:block;color:var(--ink);font-size:16px;margin-bottom:6px}
+.alert{border-radius:var(--r);padding:12px 14px;font-size:13.5px;border:1px solid}
+.alert.bad{background:var(--bad-soft);border-color:var(--bad);color:var(--ink)}
+.alert.warn{background:var(--warn-soft);border-color:var(--warn)}
+.alert .actions{margin-top:8px;display:flex;gap:8px;flex-wrap:wrap}
+.sum h2{margin:0;font-size:22px;letter-spacing:-.015em;text-wrap:balance;text-transform:none;color:var(--ink);font-weight:700}
+.sum .meta{color:var(--muted);margin-top:4px;font-size:13.5px}
+.nights{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px;align-items:center}
+.nstop{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:8px;padding:5px 6px 5px 10px;background:var(--bg)}
+.nstop b{font-weight:600}
+.step{display:flex;align-items:center;gap:2px}
+.step button{width:26px;height:26px;border-radius:6px;border:1px solid var(--line);background:var(--surface);cursor:pointer;line-height:1}
+.step span{min-width:44px;text-align:center;font-family:var(--f-mono);font-size:13px}
+.arrow{color:var(--muted)}
+.tag{display:inline-block;font-size:11.5px;padding:1px 7px;border-radius:999px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+.tag.acc{background:var(--accent-soft);color:var(--accent);border-color:transparent}
+.tag.warn{background:var(--warn-soft);color:var(--warn);border-color:transparent}
+.tag.bad{background:var(--bad-soft);color:var(--bad);border-color:transparent}
+.tag.ev{background:var(--evid-soft);color:var(--evid);border-color:transparent}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);overflow-x:auto}
+.tabs button{border:0;background:none;padding:10px 12px;cursor:pointer;color:var(--muted);font-weight:500;border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap}
+.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent);font-weight:600}
+.tabs .cnt{font-family:var(--f-mono);font-size:11.5px;margin-left:4px;padding:0 6px;border-radius:999px;background:var(--warn-soft);color:var(--warn)}
+.day{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.day>header{padding:14px 18px;border-bottom:1px solid var(--line);display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px 14px;align-items:baseline}
+.dnum{font-family:var(--f-mono);font-size:12px;color:var(--accent);font-weight:500;grid-row:span 2;align-self:start;padding-top:3px}
+.day h3{margin:0;font-size:16.5px;font-weight:700;text-wrap:balance}
+.dmeta{font-size:13px;color:var(--muted)}
+.tl{list-style:none;margin:0;padding:6px 0}
+.it{display:grid;grid-template-columns:92px minmax(0,1fr);gap:12px;padding:9px 18px}
+.it+.it{border-top:1px dashed var(--line)}
+.it time{font-family:var(--f-mono);font-size:12.5px;font-variant-numeric:tabular-nums;color:var(--muted);padding-top:2px}
+.it time .ses{display:block;font-family:var(--f-ui);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em}
+.ses.s-Sáng{color:var(--sang)} .ses.s-Chiều{color:var(--chieu)} .ses.s-Tối{color:var(--toi)}
+.it .nm{font-weight:600;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.it.minor .nm{font-weight:500;color:var(--muted)}
+.it .ds{margin:3px 0 0;color:var(--muted);font-size:13.5px;max-width:68ch}
+details.why{margin-top:6px}
+details.why summary{cursor:pointer;font-size:12.5px;color:var(--evid);font-weight:500;list-style:none;display:inline-flex;gap:6px;align-items:center}
+details.why summary::-webkit-details-marker{display:none}
+details.why summary::before{content:"▸";font-size:10px}
+details.why[open] summary::before{content:"▾"}
+.whybox{margin-top:8px;border-left:2px solid var(--evid);padding:4px 0 4px 12px;display:flex;flex-direction:column;gap:8px}
+.whybox ul{margin:0;padding-left:18px;font-size:13.5px}
+.whybox li{margin:2px 0}
+.ev{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:3px 12px;font-size:12.5px;margin:0;background:var(--sunk);border-radius:8px;padding:8px 10px}
+.ev dt{color:var(--muted)} .ev dd{margin:0;font-family:var(--f-mono);overflow-wrap:anywhere}
+.ev dd.miss{color:var(--warn)}
+.srcs{display:flex;flex-wrap:wrap;gap:10px;font-size:12.5px}
+.opt{padding:8px 18px 12px;font-size:13px;color:var(--muted);border-top:1px solid var(--line);background:var(--sunk)}
+.list{display:flex;flex-direction:column;gap:10px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px}
+.card h4{margin:0 0 4px;font-size:14.5px}
+.card p{margin:4px 0;font-size:13.5px}
+.stepcard{display:grid;grid-template-columns:34px minmax(0,1fr);gap:12px}
+.stepno{width:28px;height:28px;border-radius:50%;background:var(--accent-soft);color:var(--accent);font-weight:700;display:grid;place-items:center;font-size:13px}
+.stepcard h4{margin-top:3px}
+.tbl{overflow-x:auto;margin-top:8px}
+.tbl table{border-collapse:collapse;font-size:13px;min-width:100%}
+.tbl th,.tbl td{text-align:left;padding:6px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+.tbl th{font-weight:600;color:var(--muted);font-size:12px}
+.tbl td.n{font-family:var(--f-mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.tbl tr.chosen td{background:var(--accent-soft)}
+.wcard{border-left:3px solid var(--warn)}
+.wcard.bad{border-left-color:var(--bad)}
+.wcard ul{margin:6px 0 0;padding-left:18px;font-size:13px}
+pre.text{white-space:pre-wrap;font:400 13.5px/1.6 var(--f-ui);background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;margin:0;max-height:none}
+.bar{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.muted{color:var(--muted)}
+.small{font-size:12.5px}
+.skel{height:14px;border-radius:6px;background:var(--sunk);margin:8px 0}
+</style>
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{color-scheme:light dark}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="top">
+    <div class="brand">
+      <h1>Trợ lý thiết kế tour</h1>
+      <p>Bản demo · Lịch trình gợi ý từ dữ liệu điểm tham quan, kèm lý do và minh chứng cho từng lựa chọn</p>
+    </div>
+    <div class="status">
+      <span class="pill loading" id="status"><span class="dot"></span><span id="statusText">Đang kết nối dữ liệu…</span></span>
+      <a class="small" href="https://app.notion.com/p/401635adf558817f90d3ef2868bbc0e0" target="_blank" rel="noopener">Dữ liệu gốc trên Notion ↗</a>
+    </div>
+  </div>
+
+  <div class="grid">
+    <aside class="panel">
+      <h2>Yêu cầu của khách</h2>
+      <form id="form" novalidate>
+        <div class="f">
+          <label for="origin">Khởi hành từ</label>
+          <select id="origin" disabled><option>Đang tải…</option></select>
+        </div>
+        <div class="f">
+          <span class="lbl" id="stopsLbl">Điểm nghỉ đêm</span>
+          <div class="chips" id="stops" role="group" aria-labelledby="stopsLbl"><span class="muted small">Đang tải danh sách điểm đến…</span></div>
+          <span class="hint">Chọn nơi khách ngủ lại. Máy tự sắp thứ tự tuyến.</span>
+        </div>
+        <div class="row2">
+          <div class="f">
+            <label for="days">Số ngày</label>
+            <input id="days" type="number" min="2" max="12" value="4">
+            <span class="hint" id="nightsHint">4 ngày 3 đêm</span>
+          </div>
+          <div class="f">
+            <label for="date">Ngày khởi hành</label>
+            <input id="date" type="date">
+            <span class="hint" id="wdHint"></span>
+          </div>
+        </div>
+        <div class="row2" id="flightRow">
+          <div class="f">
+            <label for="fOut">Chuyến bay đi</label>
+            <select id="fOut"></select>
+          </div>
+          <div class="f">
+            <label for="fRet">Chuyến bay về</label>
+            <select id="fRet"></select>
+          </div>
+        </div>
+        <div class="f">
+          <span class="lbl" id="effLbl">Mức vận động tối đa</span>
+          <div class="seg" id="effort" role="group" aria-labelledby="effLbl">
+            <button type="button" data-v="Nhẹ" aria-pressed="false">Nhẹ</button>
+            <button type="button" data-v="Vừa" aria-pressed="false">Vừa</button>
+            <button type="button" data-v="Nặng" aria-pressed="true">Không giới hạn</button>
+          </div>
+        </div>
+        <details class="adv">
+          <summary>Giả định khi Notion còn thiếu số liệu</summary>
+          <div class="row2">
+            <div class="f">
+              <label for="defDur">Thời lượng/điểm (phút)</label>
+              <input id="defDur" type="number" min="15" max="480" step="15" value="90">
+            </div>
+            <div class="f">
+              <label for="hop">Di chuyển giữa 2 điểm (phút)</label>
+              <input id="hop" type="number" min="0" max="120" step="5" value="15">
+            </div>
+          </div>
+        </details>
+        <button class="btn primary" id="run" type="submit" disabled>Thiết kế lịch trình</button>
+      </form>
+    </aside>
+
+    <main id="out">
+      <div class="panel">
+        <div class="skel" style="width:40%"></div>
+        <div class="skel" style="width:70%"></div>
+        <div class="skel" style="width:55%"></div>
+        <p class="muted small">Lịch trình gợi ý sẽ hiện ở đây sau khi trang đọc xong 5 bảng dữ liệu: Điểm đến, Điểm tham quan, Chặng di chuyển, Lịch ngoại lệ và Khối ngày.</p>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script>
+(()=>{
+"use strict";
+const DS={
+  dest:{url:"collection://53ddc918-bdf0-4f06-8131-64e76c958e5b",label:"Điểm đến"},
+  attr:{url:"collection://87c153cb-fa89-477e-b1ae-bdca7c30b8c1",label:"Điểm tham quan"},
+  leg:{url:"collection://ab7114a3-28da-40fa-8e4a-a9a2f910df53",label:"Chặng di chuyển"},
+  exc:{url:"collection://4dd0ce02-beb5-4244-8d81-7f124f294620",label:"Lịch ngoại lệ"},
+  block:{url:"collection://7eabb59e-4036-4e00-a3a2-bcec5f297b41",label:"Khối ngày"}
+};
+const KEYS=Object.keys(DS);
+const SERVER="Notion", TOOL="notion-query-data-sources";
+const CFG={flightMin:130,airportOut:40,airportBefore:120,toAirport:60,dayStart:450,firstStartNoFlight:480,
+  lunchS:690,lunchE:780,aftEnd:1080,dinE:1140,dayEnd:1290,arriveBy:1110,overrun:15,maxWait:60,lastEndNoFlight:1020};
+const WIN={"Sáng":[450,690],"Chiều":[780,1080],"Tối":[1140,1290]};
+const WD=["Chủ nhật","Thứ 2","Thứ 3","Thứ 4","Thứ 5","Thứ 6","Thứ 7"];
+const EFF={"Nhẹ":1,"Vừa":2,"Nặng":3};
+const CLOSING=["Đóng cửa","Hạn chế tham quan"];
+
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const pid=u=>{const m=String(u||"").match(/([0-9a-f]{32})/i);return m?m[1].toLowerCase():null};
+const arr=v=>{if(Array.isArray(v))return v;if(typeof v==="string"&&v.trim().startsWith("[")){try{const j=JSON.parse(v);return Array.isArray(j)?j:[]}catch(e){return[]}}if(v==null||v==="")return[];return[v]};
+const txt=v=>String(v??"").replace(/<[^>]+>/g,"").replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">").trim();
+const num=v=>{if(v==null||v==="")return null;const n=Number(v);return Number.isFinite(n)?n:null};
+const yes=v=>v===true||v==="__YES__";
+const idsOf=v=>arr(v).map(pid).filter(Boolean);
+const hm=m=>{m=Math.round(m/5)*5;const h=Math.floor(m/60),mm=m%60;return String(h).padStart(2,"0")+":"+String(mm).padStart(2,"0")};
+const pad=n=>String(n).padStart(2,"0");
+const parseD=s=>{const[y,m,d]=s.split("-").map(Number);return new Date(y,m-1,d)};
+const fmtISO=dt=>dt.getFullYear()+"-"+pad(dt.getMonth()+1)+"-"+pad(dt.getDate());
+const addDays=(s,n)=>{const d=parseD(s);d.setDate(d.getDate()+n);return fmtISO(d)};
+const fmtD=s=>{const d=parseD(s);return pad(d.getDate())+"/"+pad(d.getMonth()+1)};
+const fmtDY=s=>{const d=parseD(s);return pad(d.getDate())+"/"+pad(d.getMonth()+1)+"/"+d.getFullYear()};
+const wdOf=s=>WD[parseD(s).getDay()];
+const money=n=>n==null?null:n.toLocaleString("vi-VN")+"đ";
+const sessOf=t=>t<CFG.lunchS?"Sáng":t<CFG.aftEnd?"Chiều":"Tối";
+
+let S=null;          // normalized data
+let SRC=null;        // {kind:'live'|'snapshot', at, hasMore:[]}
+
+const state={origin:null,stops:new Set(),effort:"Nặng",override:null,tab:"plan",last:null};
+
+/* ---------------- Data ---------------- */
+function normalize(raw){
+  const D=(raw.dest||[]).map(r=>({id:pid(r.url),url:r.url,name:txt(r["Tên điểm đến"]),prov:txt(r["Tỉnh/Thành"]),canStay:yes(r["Có thể nghỉ đêm"]),
+    minN:num(r["Số đêm tối thiểu"]),maxN:num(r["Số đêm tối đa"]),gate:txt(r["Sân bay / ga gần nhất"]),season:arr(r["Mùa đẹp"]).map(txt),note:txt(r["Ghi chú"]),region:txt(r["Vùng miền"])})).filter(d=>d.id);
+  const A=(raw.attr||[]).map(r=>({id:pid(r.url),url:r.url,name:txt(r["Tên điểm tham quan"]),dest:idsOf(r["Điểm đến"]),cluster:txt(r["Cụm tham quan"])||null,
+    score:num(r["Độ nổi bật (1-5)"])||0,slots:arr(r["Khung giờ phù hợp"]).map(txt),mode:txt(r["Hình thức mặc định"])||null,closed:arr(r["Ngày đóng cửa cố định"]).map(txt),
+    open:txt(r["Giờ mở cửa"]),price:num(r["Giá vé tham khảo"]),effort:txt(r["Mức vận động"])||null,desc:txt(r["Mô tả mẫu"]),dur:num(r["Thời lượng (phút)"]),src:txt(r["Nguồn"])})).filter(a=>a.id);
+  const L=(raw.leg||[]).map(r=>({id:pid(r.url),url:r.url,name:txt(r["Tên chặng"]),from:idsOf(r["Từ"])[0]||null,to:idsOf(r["Đến"])[0]||null,mode:txt(r["Phương tiện"]),
+    min:num(r["Thời gian (phút)"]),km:num(r["Khoảng cách (km)"]),timeText:txt(r["Giờ bay / giờ chạy phổ biến"]),stops:idsOf(r["Điểm ghé dọc đường"]),note:txt(r["Ghi chú tuyến đường"])})).filter(l=>l.id);
+  const X=(raw.exc||[]).map(r=>({id:pid(r.url),url:r.url,title:txt(r["Nội dung"]),type:txt(r["Loại"])||null,start:r["date:Thời gian:start"]||null,end:r["date:Thời gian:end"]||null,
+    attr:idsOf(r["Điểm tham quan"]),alt:txt(r["Phương án thay thế"]),src:txt(r["Nguồn"])})).filter(x=>x.id);
+  const K=(raw.block||[]).map(r=>({id:pid(r.url),url:r.url,title:txt(r["Tiêu đề ngày"]),pos:txt(r["Vị trí trong tour"]),meals:arr(r["Bữa ăn bao gồm"]).map(txt),
+    stay:idsOf(r["Nghỉ đêm tại"]),attrs:[...idsOf(r["Buổi sáng"]),...idsOf(r["Buổi chiều"]),...idsOf(r["Buổi tối"])]})).filter(k=>k.id);
+  return {D,A,L,X,K};
+}
+function index(d){
+  d.dById=new Map(d.D.map(x=>[x.id,x]));
+  d.aById=new Map(d.A.map(x=>[x.id,x]));
+  d.byDest=new Map();
+  for(const a of d.A)for(const id of a.dest){if(!d.byDest.has(id))d.byDest.set(id,[]);d.byDest.get(id).push(a)}
+  d.adj=new Map();
+  for(const l of d.L){
+    if(!l.from||!l.to||l.mode==="Máy bay")continue;
+    const lm=legMin(l);if(!lm)continue;
+    if(!d.adj.has(l.from))d.adj.set(l.from,[]);
+    d.adj.get(l.from).push({l,m:lm.m});
+  }
+  d.genericClusters=new Set([...d.D.map(x=>x.name),...d.D.map(x=>x.prov)].filter(Boolean).map(s=>s.toLowerCase()));
+  return d;
+}
+const dn=id=>(S.dById.get(id)||{}).name||"(không rõ)";
+
+function legMin(l){
+  if(l.mode==="Máy bay")return{m:CFG.flightMin,how:`giả định ${CFG.flightMin} phút bay (Notion không ghi thời gian bay)`,est:true};
+  if(l.min)return{m:l.min,how:"cột Thời gian (phút) trên Notion",est:false};
+  const t=l.timeText.replace(/,/g,".");
+  let m=t.match(/(\d+(?:\.\d+)?)\s*[–—-]\s*(\d+(?:\.\d+)?)\s*giờ/);
+  if(m)return{m:Math.round(parseFloat(m[2])*60),how:`lấy cận trên của “${l.timeText}” (cột Thời gian (phút) còn trống)`,est:true};
+  m=t.match(/(\d+(?:\.\d+)?)\s*giờ/);
+  if(m)return{m:Math.round(parseFloat(m[1])*60),how:`đọc từ “${l.timeText}” (cột Thời gian (phút) còn trống)`,est:true};
+  m=t.match(/(\d+)\s*[–—-]\s*(\d+)\s*phút/);
+  if(m)return{m:+m[2],how:`lấy cận trên của “${l.timeText}” (cột Thời gian (phút) còn trống)`,est:true};
+  m=t.match(/(\d+)\s*phút/);
+  if(m)return{m:+m[1],how:`đọc từ “${l.timeText}”`,est:true};
+  return null;
+}
+function flightsOf(l){
+  const out=[];const re=/([A-Z]{2}\d{2,4})\s+(\d{1,2})h(\d{2})/g;let m;
+  while((m=re.exec(l.timeText||""))){out.push({code:m[1],t:+m[2]*60+ +m[3],label:`${m[1]} · ${m[2].padStart(2,"0")}:${m[3]}`})}
+  return out;
+}
+function sp(from,to){
+  if(from===to)return{m:0,legs:[],nodes:[from]};
+  const dist=new Map([[from,0]]),prev=new Map(),done=new Set();
+  while(true){
+    let u=null,best=Infinity;
+    for(const[k,v]of dist)if(!done.has(k)&&v<best){best=v;u=k}
+    if(u==null)return null;
+    if(u===to)break;
+    done.add(u);
+    for(const e of S.adj.get(u)||[]){const nd=best+e.m;if(nd<(dist.get(e.l.to)??Infinity)){dist.set(e.l.to,nd);prev.set(e.l.to,{from:u,e})}}
+  }
+  const legs=[],nodes=[to];let c=to;
+  while(c!==from){const p=prev.get(c);legs.unshift(p.e);nodes.unshift(p.from);c=p.from}
+  return{m:dist.get(to),legs,nodes};
+}
+function ranges(open){
+  const out=[];const re=/(\d{1,2})\s*[:hH]\s*(\d{2})?\s*[–—-]\s*(\d{1,2})\s*[:hH]\s*(\d{2})?/g;let m;
+  while((m=re.exec(open||""))){const s=+m[1]*60+(+m[2]||0),e=+m[3]*60+(+m[4]||0);if(e>s)out.push({s,e})}
+  return out;
+}
+const isGeneric=c=>!c||S.genericClusters.has(c.toLowerCase());
+const gkey=a=>isGeneric(a.cluster)?"solo:"+a.id:"c:"+a.cluster;
+
+/* ---------------- Engine ---------------- */
+function perms(a){if(a.length<=1)return[a.slice()];const out=[];a.forEach((x,i)=>{for(const p of perms(a.slice(0,i).concat(a.slice(i+1))))out.push([x,...p])});return out}
+
+function gateways(origin){
+  const inG=[{id:origin,flight:null}],retG=[{id:origin,flight:null}];
+  for(const l of S.L){
+    if(l.mode!=="Máy bay")continue;
+    if(l.from===origin&&l.to)inG.push({id:l.to,flight:l});
+    if(l.to===origin&&l.from)retG.push({id:l.from,flight:l});
+  }
+  return{inG,retG};
+}
+
+function chooseRoute(origin,stops){
+  const {inG,retG}=gateways(origin);
+  const cands=[];
+  for(const p of perms(stops))for(const gi of inG)for(const gr of retG){
+    let m=gi.flight?CFG.flightMin:0,ok=true;const parts=[];
+    const seq=[gi.id,...p,gr.id];
+    for(let i=0;i<seq.length-1;i++){const r=sp(seq[i],seq[i+1]);if(!r){ok=false;parts.push({from:seq[i],to:seq[i+1],m:null});break}m+=r.m;parts.push({from:seq[i],to:seq[i+1],m:r.m})}
+    if(!ok){cands.push({p,gi,gr,m:Infinity,parts});continue}
+    m+=gr.flight?CFG.flightMin:0;
+    const endsAtRet=p[p.length-1]===gr.id;
+    const firstLeg=parts[0]?parts[0].m:0;
+    cands.push({p,gi,gr,m,parts,endsAtRet,firstLeg});
+  }
+  cands.sort((a,b)=>a.m-b.m||(b.endsAtRet-a.endsAtRet)||(b.firstLeg-a.firstLeg));
+  return cands;
+}
+
+function allocNights(order,nights,gi,gr,override){
+  const why=[];
+  const al=order.map(id=>{const d=S.dById.get(id);return{id,n:Math.max(1,d.minN||1),min:Math.max(1,d.minN||1),max:d.maxN||null}});
+  const need=al.reduce((s,x)=>s+x.n,0);
+  if(need>nights)return{error:`Các điểm đã chọn cần tối thiểu ${need} đêm (theo cột “Số đêm tối thiểu”), nhưng ${nights+1} ngày chỉ có ${nights} đêm. Bớt điểm nghỉ đêm hoặc tăng số ngày.`};
+  al.forEach(x=>why.push(`${dn(x.id)}: tối thiểu ${x.min} đêm${S.dById.get(x.id).minN?"":" (cột Số đêm tối thiểu trống, máy tính 1)"}${x.max?`, tối đa ${x.max}`:", chưa đặt tối đa"}.`));
+  if(override){
+    const sum=order.reduce((s,id)=>s+(override[id]||0),0);
+    if(sum===nights&&order.every(id=>(override[id]||0)>=1)){
+      order.forEach((id,i)=>al[i].n=override[id]);
+      why.push(`Phân bổ đêm do nhân viên chỉnh tay: ${al.map(x=>`${dn(x.id)} ${x.n}`).join(", ")}.`);
+      return{al,why,manual:true};
+    }
+  }
+  let extra=nights-need;
+  const far=x=>{const a=sp(gi.id,x.id),b=sp(x.id,gr.id);return Math.min(a?a.m:Infinity,b?b.m:Infinity)};
+  const scoreSum=id=>(S.byDest.get(id)||[]).reduce((s,a)=>s+a.score,0);
+  while(extra>0){
+    const pool=al.filter(x=>x.max==null||x.n<x.max);
+    if(!pool.length)break;
+    pool.sort((a,b)=>(far(b)-far(a))||(scoreSum(b.id)-scoreSum(a.id)));
+    const t=pool[0];
+    // spread: if the far stop already has 2+ extra and others have none, rotate
+    const pick=(t.n-t.min>=2&&pool.some(x=>x.n===x.min&&x!==t))?pool.find(x=>x.n===x.min&&x!==t):t;
+    pick.n++;extra--;
+    const f=far(pick);
+    why.push(`Đêm dư thứ ${nights-need-extra} giao cho ${dn(pick.id)}: điểm xa cổng ra/vào nhất (${Number.isFinite(f)?Math.round(f/6)/10+" giờ":"?"} đường bộ), ở thêm để chặng đường dài đáng giá hơn.`);
+  }
+  if(extra>0)return{error:`Còn ${extra} đêm chưa xếp được vì các điểm đã đạt “Số đêm tối đa”. Thêm điểm nghỉ đêm hoặc giảm số ngày.`};
+  return{al,why,manual:false};
+}
+
+function excHits(a,date){
+  return S.X.filter(x=>x.attr.includes(a.id)&&x.start).map(x=>{
+    const closing=CLOSING.includes(x.type);
+    const end=x.end||(closing?"9999-12-31":x.start);
+    return{x,closing,hit:date>=x.start&&date<=end,openEnded:!x.end&&closing};
+  });
+}
+const xTitle=x=>(x.title&&!/^https?:/i.test(x.title))?x.title:"(dòng chưa có tiêu đề)";
+const xRange=x=>x.end?`${fmtDY(x.start)} – ${fmtDY(x.end)}`:`từ ${fmtDY(x.start)}${CLOSING.includes(x.type)?", chưa có ngày mở lại":""}`;
+
+function eligible(ctx,a,day){
+  if(ctx.maxEffort!=="Nặng"&&a.effort&&EFF[a.effort]>EFF[ctx.maxEffort])
+    return{ok:false,kind:"effort",why:`Mức vận động “${a.effort}” vượt mức tối đa đã chọn (“${ctx.maxEffort}”).`};
+  if(a.closed.includes(day.wd))
+    return{ok:false,kind:"closedDay",why:`Đóng cửa cố định ${a.closed.join(", ")}; ngày ${fmtD(day.date)} là ${day.wd}.`};
+  for(const h of excHits(a,day.date)){
+    if(h.hit&&h.closing)return{ok:false,kind:"exception",x:h.x,why:`Lịch ngoại lệ: ${xTitle(h.x)} (${h.x.type}, ${xRange(h.x)}) trùng ngày ${fmtD(day.date)}.`};
+  }
+  return{ok:true};
+}
+function noteEx(ctx,a,info){
+  if(!ctx.ex.has(a.id))ctx.ex.set(a.id,{a,items:[]});
+  const e=ctx.ex.get(a.id);
+  if(!e.items.some(i=>i.why===info.why))e.items.push(info);
+}
+const durOf=(ctx,a)=>a.dur||ctx.defDur;
+
+function fitStart(ctx,a,t,sEnd,s){
+  const d=durOf(ctx,a);const rs=ranges(a.open);
+  if(!rs.length)return t+d<=sEnd+CFG.overrun?{start:t,parsed:false}:{start:null};
+  for(const r of rs){const st=Math.max(t,r.s);if(st-t>CFG.maxWait)continue;if(st+d<=Math.min(sEnd+CFG.overrun,r.e))return{start:st,parsed:true,r}}
+  const w=WIN[s];
+  const overlaps=rs.some(r=>r.s<w[1]&&r.e>w[0]);
+  return{start:null,conflict:!overlaps,why:overlaps?null:`Khung giờ ghi “${a.slots.join(", ")}” nhưng giờ mở cửa “${a.open}” không rơi vào buổi ${s}. Dữ liệu mâu thuẫn, máy bỏ qua buổi này.`};
+}
+
+function mealGate(day,t,until,travel){
+  if(until<=t)return t;
+  if(!day.lunch&&t>=CFG.lunchS&&t<870){const e=travel?t+60:Math.max(CFG.lunchE,t+60);day.items.push({type:"meal",label:"Ăn trưa",start:t,end:e});day.lunch=true;return e}
+  if(!travel&&!day.dinner&&t>=CFG.aftEnd&&t<1200&&until>CFG.aftEnd){const e=Math.max(CFG.dinE,t+60);day.items.push({type:"meal",label:"Ăn tối",start:t,end:e});day.dinner=true;return e}
+  return t;
+}
+
+function visitWhy(ctx,a,s,start,choice,day,via){
+  const why=[];
+  if(via)why.push(via);
+  else if(choice.type==="stick")why.push(`Cùng cụm “${a.cluster}” với điểm vừa xếp nên gom chung buổi, đỡ di chuyển.`);
+  else if(choice.type==="group"){
+    const lab=isGeneric(a.cluster)?`Điểm lẻ (cụm “${a.cluster||"trống"}” trùng tên địa phương nên máy không gom)`:`Cụm “${a.cluster}”`;
+    let t=`${lab}: tổng độ nổi bật ${choice.sum} các điểm còn xếp được trong buổi ${s}, cao nhất.`;
+    if(choice.runner)t+=` Phương án kế tiếp: ${choice.runner.label} (${choice.runner.sum}).`;
+    why.push(t);
+  }
+  why.push(`Độ nổi bật ${a.score}/5${a.score>=5?" (must-see)":""}.`);
+  why.push(`Khung giờ phù hợp “${a.slots.join(", ")||"trống"}” khớp buổi ${s}.`);
+  const rs=ranges(a.open);
+  if(a.open&&rs.length)why.push(`Giờ mở cửa “${a.open}”: khung ${hm(start)}–${hm(start+durOf(ctx,a))} nằm trong giờ mở.`);
+  else if(a.open)why.push(`Giờ mở cửa “${a.open}” chưa ở dạng khung giờ nên máy chưa tự kiểm, cần người xác nhận.`);
+  else why.push("Giờ mở cửa còn trống trên Notion, máy chưa kiểm được.");
+  if(a.closed.length)why.push(`Đóng cửa cố định ${a.closed.join(", ")}; ${day.wd} vẫn mở.`);
+  for(const h of excHits(a,day.date))if(!h.hit)why.push(`Có lịch ngoại lệ “${xTitle(h.x)}” (${xRange(h.x)}) nhưng không trùng ngày ${fmtD(day.date)}.`);
+  why.push(a.dur?`Thời lượng ${a.dur} phút (theo Notion).`:`Thời lượng trống trên Notion, tạm tính ${ctx.defDur} phút.`);
+  if(a.mode==="Tự túc")why.push("Hình thức mặc định “Tự túc”: vẫn xếp vào lịch, văn bản ghi chi phí tự túc.");
+  if(a.mode==="Tự do khám phá")why.push("Hình thức “Tự do khám phá”: khách tự đi, không cần HDV dẫn.");
+  return why;
+}
+function pushVisit(ctx,day,a,start,why,enroute){
+  const end=start+durOf(ctx,a);
+  day.items.push({type:"visit",a,start,end,ses:sessOf(start),why,enroute:!!enroute});
+  ctx.used.add(a.id);
+  return end;
+}
+
+function choose(fits,last){
+  if(last){const same=fits.filter(x=>gkey(x.a)===last);if(same.length){same.sort((x,y)=>y.a.score-x.a.score||x.start-y.start);return{pick:same[0],choice:{type:"stick"}}}}
+  const groups=new Map();
+  for(const f of fits){const k=gkey(f.a);if(!groups.has(k))groups.set(k,{k,items:[],sum:0,top:0});const g=groups.get(k);g.items.push(f);g.sum+=f.a.score;g.top=Math.max(g.top,f.a.score)}
+  const gs=[...groups.values()].sort((a,b)=>b.sum-a.sum||b.top-a.top);
+  const g=gs[0];g.items.sort((x,y)=>y.a.score-x.a.score||x.start-y.start);
+  const lab=x=>x.k.startsWith("c:")?`cụm “${x.k.slice(2)}”`:`“${x.items[0].a.name}”`;
+  return{pick:g.items[0],choice:{type:"group",sum:g.sum,runner:gs[1]?{label:lab(gs[1]),sum:gs[1].sum}:null}};
+}
+
+function fillAt(ctx,day,loc,t,until){
+  let last=null;
+  for(let guard=0;guard<80;guard++){
+    t=mealGate(day,t,until,false);
+    if(t>=until-20)break;
+    const s=sessOf(t);
+    const sEnd=Math.min(until,s==="Sáng"?CFG.lunchS:s==="Chiều"?CFG.aftEnd:CFG.dayEnd);
+    if(t<WIN[s][0]&&s!=="Sáng"){t=WIN[s][0];continue}
+    const fits=[];
+    for(const a of ctx.byDest(loc)){
+      if(ctx.used.has(a.id))continue;
+      if(a.mode==="Tùy chọn"){if(a.slots.includes(s)){const el=eligible(ctx,a,day);if(el.ok&&!day.optional.some(o=>o.a.id===a.id))day.optional.push({a,ses:s})}continue}
+      if(!a.slots.includes(s))continue;
+      const el=eligible(ctx,a,day);
+      if(!el.ok){noteEx(ctx,a,{...el,date:day.date});continue}
+      const f=fitStart(ctx,a,t,sEnd,s);
+      if(f.start==null){if(f.conflict)noteEx(ctx,a,{kind:"hours",why:f.why,date:day.date});continue}
+      fits.push({a,start:f.start});
+    }
+    if(!fits.length){if(sEnd>=until)break;t=sEnd;last=null;if(s==="Tối")break;continue}
+    const{pick,choice}=choose(fits,last);
+    const end=pushVisit(ctx,day,pick.a,pick.start,visitWhy(ctx,pick.a,s,pick.start,choice,day),false);
+    last=gkey(pick.a);
+    t=end+ctx.hop;
+  }
+  return t;
+}
+
+function travel(ctx,day,from,to,t,arriveBy){
+  const r=sp(from,to);
+  if(!r){day.errors.push(`Không có chặng đường bộ nối ${dn(from)} → ${dn(to)} trong bảng Chặng di chuyển.`);return{t,ok:false}}
+  const legMins=r.legs.map(e=>e.m);
+  const restFrom=i=>legMins.slice(i).reduce((s,x)=>s+x,0);
+  const lunchPend=tt=>(!day.lunch&&tt<870)?60:0;
+  for(let i=0;i<r.legs.length;i++){
+    const e=r.legs[i],l=e.l,lm=legMin(l);
+    // pass-through node (not first)
+    if(i>0){
+      const node=r.nodes[i];
+      if(!ctx.stayIds.has(node))t=enroute(ctx,day,ctx.byDest(node).filter(a=>a.mode!=="Tùy chọn"),t,arriveBy,restFrom(i),lunchPend,`Đi qua ${dn(node)} (không nghỉ đêm ở đây) nên tranh thủ ghé.`,l);
+    }
+    t=mealGate(day,t,Infinity,true);
+    const half=Math.round(e.m/2);
+    day.items.push({type:"transfer",l,start:t,end:t+e.m,lm,from:r.nodes[i],to:r.nodes[i+1]});
+    const tStart=t;t+=half;
+    const before=day.items.length;
+    if(l.stops.length){
+      const stops=l.stops.map(id=>S.aById.get(id)).filter(Boolean);
+      t=enroute(ctx,day,stops,t,arriveBy,e.m-half+restFrom(i+1),lunchPend,`Nằm trong cột “Điểm ghé dọc đường” của chặng “${l.name}”.`,l);
+    }
+    t=mealGate(day,t,Infinity,true);
+    t+=e.m-half;
+    // make the transfer item reflect stops
+    const tr=day.items.find(x=>x.type==="transfer"&&x.l===l&&x.start===tStart);
+    if(tr)tr.end=t;
+    if(day.items.length>before){/* items inserted mid-leg keep order by time */}
+  }
+  return{t,ok:true,r};
+}
+function enroute(ctx,day,list,t,arriveBy,rest,lunchPend,via,leg){
+  const c=list.filter(a=>!ctx.used.has(a.id)).sort((a,b)=>b.score-a.score);
+  for(const a of c){
+    const s=sessOf(t);
+    if(a.slots.length&&!a.slots.includes(s)){ctx.skipped.push({a,leg,why:`Khung giờ “${a.slots.join(", ")}” không khớp lúc đi qua (${s}, ${hm(t)}).`,date:day.date});continue}
+    const el=eligible(ctx,a,day);
+    if(!el.ok){noteEx(ctx,a,{...el,date:day.date});ctx.skipped.push({a,leg,why:el.why,date:day.date});continue}
+    const d=durOf(ctx,a);
+    const arrive=t+d+ctx.hop+rest+lunchPend(t+d);
+    if(arrive>arriveBy+CFG.overrun){ctx.skipped.push({a,leg,why:`Không kịp: ghé thêm ${d} phút thì tới nơi khoảng ${hm(arrive)}, muộn hơn mốc ${hm(arriveBy)}.`,date:day.date});continue}
+    const why=visitWhy(ctx,a,s,t,{},day,via);
+    why.splice(1,0,`Tới nơi dự kiến ${hm(arrive)}, vẫn trước mốc ${hm(arriveBy)}.`);
+    t=pushVisit(ctx,day,a,t,why,true)+ctx.hop;
+  }
+  return t;
+}
+
+function matchBlock(day,k,days){
+  const pos=k===1?"Ngày đầu":k===days?"Ngày cuối":"Ngày giữa";
+  const vis=new Set(day.items.filter(i=>i.type==="visit").map(i=>i.a.id));
+  let best=null;
+  for(const b of S.K){
+    if(k<days&&day.stay&&b.stay.length&&!b.stay.includes(day.stay))continue;
+    if(k===days&&b.stay.length)continue;
+    const ov=b.attrs.filter(x=>vis.has(x)).length;
+    if(!ov)continue;
+    const sc=ov*2+(b.pos===pos?1:0);
+    if(!best||sc>best.sc)best={b,sc,ov,pos};
+  }
+  return best;
+}
+function defaultMeals(day,k,days){
+  if(k===1)return["Trưa","Chiều"];
+  if(k===days)return["Sáng","Trưa"];
+  return["Sáng","Trưa","Chiều"];
+}
+const headName=R=>[...new Set([R.route.gi.id,...R.route.p,R.route.gr.id].filter(id=>id!==R.req.origin||R.route.p.includes(id)).map(dn))].join(" – ");
+
+function plan(req){
+  const R={req,errors:[],trace:{},days:[],warnings:[],skipped:[],ex:new Map()};
+  if(!req.stops.length){R.errors.push("Chọn ít nhất một điểm nghỉ đêm.");return R}
+  if(req.stops.length>6){R.errors.push("Chọn tối đa 6 điểm nghỉ đêm để máy còn thử hết các thứ tự tuyến.");return R}
+  const nights=req.days-1;
+  const routes=chooseRoute(req.origin,req.stops);
+  const best=routes[0];
+  if(!best||!Number.isFinite(best.m)){
+    const miss=(best&&best.parts.find(p=>p.m==null));
+    R.errors.push(miss?`Không tìm được đường nối ${dn(miss.from)} → ${dn(miss.to)} trong bảng Chặng di chuyển. Thêm chặng này trên Notion rồi đọc lại.`:"Không tìm được tuyến phù hợp.");
+    return R;
+  }
+  R.trace.routes=routes.filter(r=>Number.isFinite(r.m)).slice(0,6);
+  R.route=best;
+  const order=best.p;
+  const na=allocNights(order,nights,best.gi,best.gr,req.override);
+  if(na.error){R.errors.push(na.error);return R}
+  R.alloc=na;
+  const stays=[];na.al.forEach(x=>{for(let i=0;i<x.n;i++)stays.push(x.id)});
+  const flightIn=best.gi.flight,flightOut=best.gr.flight;
+  const outF=flightIn?(flightsOf(flightIn).find(f=>f.label===req.outFlight)||flightsOf(flightIn)[0]||{t:360,label:"(chưa có giờ bay)",code:""}):null;
+  const retF=flightOut?(flightsOf(flightOut).find(f=>f.label===req.retFlight)||flightsOf(flightOut).slice(-1)[0]||{t:1200,label:"(chưa có giờ bay)",code:""}):null;
+  R.outF=outF;R.retF=retF;R.flightIn=flightIn;R.flightOut=flightOut;
+  const ctx={used:new Set(),ex:R.ex,skipped:R.skipped,defDur:req.defDur,hop:req.hop,maxEffort:req.effort,stayIds:new Set(order),
+    byDest:id=>(S.byDest.get(id)||[])};
+  const legsUsed=new Map();
+  for(let k=1;k<=req.days;k++){
+    const date=addDays(req.date,k-1);
+    const day={k,date,wd:wdOf(date),items:[],optional:[],errors:[],lunch:false,dinner:false};
+    day.slept=k===1?null:stays[k-2];
+    day.stay=k<req.days?stays[k-1]:null;
+    day.from=k===1?best.gi.id:stays[k-2];
+    day.to=k<req.days?stays[k-1]:best.gr.id;
+    let t;
+    if(k===1){
+      if(flightIn){
+        day.items.push({type:"flight",l:flightIn,f:outF,start:outF.t,end:outF.t+CFG.flightMin,from:req.origin,to:best.gi.id});
+        t=outF.t+CFG.flightMin+CFG.airportOut;
+        if(t>=CFG.lunchS&&t<870&&!day.lunch){}
+      }else t=CFG.firstStartNoFlight;
+    }else t=CFG.dayStart;
+    day.startT=t;
+    let endLimit=CFG.dayEnd;
+    if(k===req.days)endLimit=flightOut?retF.t-CFG.airportBefore-CFG.toAirport:CFG.lastEndNoFlight;
+    day.endLimit=endLimit;
+    const canAt=loc=>loc===day.slept||loc===day.stay||(k===req.days&&loc===best.gr.id&&ctx.stayIds.has(loc));
+    if(day.from===day.to){
+      if(canAt(day.from))t=fillAt(ctx,day,day.from,t,endLimit);
+    }else{
+      const r=sp(day.from,day.to);
+      if(!r){day.errors.push(`Không có chặng nối ${dn(day.from)} → ${dn(day.to)}.`)}
+      else{
+        const arriveBy=k===req.days?endLimit:CFG.arriveBy;
+        const travelM=r.m;
+        let reserve=0;
+        const enr=[];
+        r.nodes.slice(1,-1).forEach(n=>{if(!ctx.stayIds.has(n))enr.push(...ctx.byDest(n))});
+        r.legs.forEach(e=>e.l.stops.forEach(id=>{const a=S.aById.get(id);if(a)enr.push(a)}));
+        for(const a of enr)if(!ctx.used.has(a.id)&&a.score>=4&&a.mode!=="Tùy chọn"&&eligible(ctx,a,day).ok)reserve+=durOf(ctx,a)+ctx.hop;
+        const lunchRes=(t<870&&t+travelM>CFG.lunchS)?60:0;
+        const leaveBy=arriveBy-travelM-reserve-lunchRes;
+        day.plan={travelM,reserve,lunchRes,leaveBy,arriveBy};
+        if(canAt(day.from)&&leaveBy>t+30)t=fillAt(ctx,day,day.from,t,leaveBy);
+        const tr=travel(ctx,day,day.from,day.to,t,arriveBy);
+        t=tr.t;
+        r.legs.forEach(e=>legsUsed.set(e.l.id,e.l));
+        if(canAt(day.to)||k<req.days)t=fillAt(ctx,day,day.to,t,endLimit);
+      }
+    }
+    if(k===req.days&&flightOut){
+      const at=Math.max(t,endLimit);
+      day.items.push({type:"toAirport",start:Math.min(at,retF.t-CFG.airportBefore-CFG.toAirport),end:retF.t-CFG.airportBefore,gate:best.gr.id});
+      day.items.push({type:"flight",l:flightOut,f:retF,start:retF.t,end:retF.t+CFG.flightMin,from:best.gr.id,to:req.origin});
+    }
+    day.items.sort((a,b)=>a.start-b.start);
+    const mb=matchBlock(day,k,req.days);
+    day.block=mb;
+    day.meals=mb?mb.b.meals:defaultMeals(day,k,req.days);
+    R.days.push(day);
+  }
+  // excluded: attractions at stops not used
+  const pool=new Map();
+  for(const id of order)for(const a of ctx.byDest(id))pool.set(a.id,a);
+  R.unplaced=[...pool.values()].filter(a=>!ctx.used.has(a.id)).map(a=>{
+    const e=R.ex.get(a.id);const sk=R.skipped.filter(s=>s.a.id===a.id);
+    let reasons=e?e.items.map(i=>i.why):[];
+    let x=e?e.items.map(i=>i.x).filter(Boolean):[];
+    if(a.mode==="Tùy chọn")reasons=["Hình thức “Tùy chọn”: máy không xếp vào lịch chính, chỉ gợi ý kèm buổi phù hợp."].concat(reasons);
+    if(!reasons.length&&sk.length)reasons=sk.map(s=>s.why);
+    if(!reasons.length)reasons=[`Không còn buổi trống khớp khung giờ “${a.slots.join(", ")||"trống"}” sau khi xếp các điểm nổi bật hơn.`];
+    return{a,reasons:[...new Set(reasons)],x:[...new Set(x)]};
+  }).sort((p,q)=>q.a.score-p.a.score);
+  R.legsUsed=[...legsUsed.values()];
+  R.used=ctx.used;
+  R.warnings=buildWarnings(R,order);
+  return R;
+}
+
+function buildWarnings(R,order){
+  const W=[];
+  const usedA=[...R.used].map(id=>S.aById.get(id));
+  const noDur=usedA.filter(a=>!a.dur);
+  if(noDur.length)W.push({lvl:"warn",title:`${noDur.length} điểm trong lịch chưa có “Thời lượng (phút)”`,body:`Máy tạm tính ${R.req.defDur} phút mỗi điểm, nên giờ giấc trong lịch chỉ mang tính ước lượng.`,items:noDur.map(a=>({label:a.name,url:a.url}))});
+  const legs=[...R.legsUsed,...[R.flightIn,R.flightOut].filter(Boolean)];
+  const noMin=R.legsUsed.filter(l=>!l.min);
+  if(noMin.length)W.push({lvl:"warn",title:`${noMin.length} chặng chưa có số “Thời gian (phút)”`,body:"Máy đọc thời gian từ cột chữ “Giờ bay / giờ chạy phổ biến” và lấy cận trên.",items:noMin.map(l=>({label:`${l.name}: “${l.timeText}”`,url:l.url}))});
+  const hrs=[];
+  for(const[id,e]of R.ex)for(const i of e.items)if(i.kind==="hours")hrs.push({label:`${e.a.name}: ${i.why}`,url:e.a.url});
+  if(hrs.length)W.push({lvl:"bad",title:"Khung giờ mâu thuẫn với giờ mở cửa",body:"Sửa một trong hai cột để máy xếp đúng buổi.",items:hrs});
+  const gen=new Set();
+  for(const id of order)for(const a of S.byDest.get(id)||[])if(a.cluster&&isGeneric(a.cluster))gen.add(a.cluster);
+  if(gen.size)W.push({lvl:"warn",title:"Cụm tham quan đang trùng tên địa phương",body:`Các cụm ${[...gen].map(g=>`“${g}”`).join(", ")} là tên tỉnh/điểm đến nên máy coi mỗi điểm là điểm lẻ và không gom được. Nên đặt cụm theo khu vực thật (ví dụ “Ba Đình”, “Hồ Tây”).`,items:[]});
+  const xs=S.X;
+  const blank=xs.filter(x=>!x.title&&!x.attr.length);
+  const urlTitle=xs.filter(x=>/^https?:/i.test(x.title||""));
+  const openEnd=xs.filter(x=>CLOSING.includes(x.type)&&x.start&&!x.end);
+  const xi=[...blank.map(x=>({label:"Dòng trống hoàn toàn",url:x.url})),...urlTitle.map(x=>({label:"Cột Nội dung đang chứa đường link, cột Nguồn trống",url:x.url})),...openEnd.map(x=>({label:`${xTitle(x)}: đóng cửa ${xRange(x)}. Máy coi là còn đóng.`,url:x.url}))];
+  if(xi.length)W.push({lvl:"warn",title:"Lịch ngoại lệ cần dọn",body:"",items:xi});
+  for(const id of order){
+    const d=S.dById.get(id);
+    const months=[...new Set(R.days.filter(x=>x.stay===id).map(x=>"Tháng "+(parseD(x.date).getMonth()+1)))];
+    if(d.season.length&&months.some(m=>!d.season.includes(m)))W.push({lvl:"warn",title:`${d.name}: ngoài “Mùa đẹp”`,body:`Mùa đẹp ghi trên Notion: ${d.season.join(", ")}. Ngày lưu trú rơi vào ${months.join(", ")}.`,items:[{label:d.name,url:d.url}]});
+  }
+  if(SRC&&SRC.hasMore&&SRC.hasMore.length)W.push({lvl:"bad",title:"Có bảng vượt 100 dòng",body:`Trang mới đọc 100 dòng đầu của: ${SRC.hasMore.join(", ")}. Kết quả có thể thiếu điểm.`,items:[]});
+  return W;
+}
+
+/* ---------------- Rendering ---------------- */
+function evRows(a,ctx){
+  const r=[
+    ["Độ nổi bật (1-5)",a.score||null],["Khung giờ phù hợp",a.slots.join(", ")],["Cụm tham quan",a.cluster],["Giờ mở cửa",a.open],
+    ["Ngày đóng cửa cố định",a.closed.join(", ")],["Thời lượng (phút)",a.dur],["Hình thức mặc định",a.mode],["Mức vận động",a.effort],["Giá vé tham khảo",money(a.price)]
+  ];
+  return `<dl class="ev">${r.map(([k,v])=>`<dt>${esc(k)}</dt><dd class="${v==null||v===""?"miss":""}">${v==null||v===""?"(trống)":esc(v)}</dd>`).join("")}</dl>`;
+}
+function srcLinks(a,extra){
+  const l=[`<a href="${esc(a.url)}" target="_blank" rel="noopener">Dòng “${esc(a.name)}” trên Notion ↗</a>`];
+  if(a.src)l.push(`<a href="${esc(a.src)}" target="_blank" rel="noopener">Nguồn gốc dữ liệu ↗</a>`);
+  for(const x of extra||[])l.push(`<a href="${esc(x.url)}" target="_blank" rel="noopener">Lịch ngoại lệ ↗</a>`+(x.src?` <a href="${esc(x.src)}" target="_blank" rel="noopener">Nguồn thông báo ↗</a>`:""));
+  return `<div class="srcs">${l.join("")}</div>`;
+}
+function modeTag(a){
+  if(a.mode==="Tự túc")return `<span class="tag warn">Chi phí tự túc</span>`;
+  if(a.mode==="Tự do khám phá")return `<span class="tag">Tự do</span>`;
+  if(a.mode==="Tùy chọn")return `<span class="tag">Tùy chọn</span>`;
+  return "";
+}
+function timeCell(it,prevSes){
+  const ses=sessOf(it.start);
+  const lab=ses!==prevSes?`<span class="ses s-${ses}">${ses}</span>`:"";
+  return `<time>${lab}${hm(it.start)}${it.end?`–${hm(it.end)}`:""}</time>`;
+}
+function renderItem(it,R,prevSes){
+  if(it.type==="visit"){
+    const a=it.a;
+    return `<li class="it">${timeCell(it,prevSes)}<div>
+      <div class="nm">${esc(a.name)} <span class="tag acc">★ ${a.score}</span>${it.enroute?`<span class="tag ev">Dọc đường</span>`:""}${modeTag(a)}${!a.dur?`<span class="tag warn">Thời lượng ước tính</span>`:""}</div>
+      ${a.desc?`<p class="ds">${esc(a.desc)}</p>`:""}
+      <details class="why"><summary>Vì sao chọn · minh chứng</summary><div class="whybox">
+        <ul>${it.why.map(w=>`<li>${esc(w)}</li>`).join("")}</ul>${evRows(a)}${srcLinks(a,excHits(a,R.curDate).map(h=>h.x))}
+      </div></details></div></li>`;
+  }
+  if(it.type==="transfer"){
+    const l=it.l;
+    return `<li class="it minor">${timeCell(it,prevSes)}<div>
+      <div class="nm">Di chuyển ${esc(dn(it.from))} → ${esc(dn(it.to))}${l.km?` <span class="tag">${l.km} km</span>`:""}${it.lm.est?`<span class="tag warn">Thời gian ước tính</span>`:""}</div>
+      ${l.note?`<p class="ds">${esc(l.note)}</p>`:""}
+      <details class="why"><summary>Vì sao tính ${Math.round(it.lm.m/6)/10} giờ · minh chứng</summary><div class="whybox">
+        <ul><li>Tuyến ngắn nhất theo bảng Chặng di chuyển: “${esc(l.name)}”.</li><li>Thời gian: ${esc(it.lm.how)} = ${it.lm.m} phút.</li>${l.stops.length?`<li>Chặng có ${l.stops.length} điểm ghé dọc đường; máy xét chèn ở giữa chặng.</li>`:""}</ul>
+        <dl class="ev"><dt>Phương tiện</dt><dd>${esc(l.mode||"(trống)")}</dd><dt>Khoảng cách (km)</dt><dd class="${l.km?"":"miss"}">${l.km??"(trống)"}</dd><dt>Thời gian (phút)</dt><dd class="${l.min?"":"miss"}">${l.min??"(trống)"}</dd><dt>Giờ chạy phổ biến</dt><dd>${esc(l.timeText||"(trống)")}</dd></dl>
+        <div class="srcs"><a href="${esc(l.url)}" target="_blank" rel="noopener">Chặng “${esc(l.name)}” trên Notion ↗</a></div>
+      </div></details></div></li>`;
+  }
+  if(it.type==="flight"){
+    const l=it.l;
+    return `<li class="it minor">${timeCell(it,prevSes)}<div>
+      <div class="nm">Bay ${esc(it.f.code||"")} ${esc(dn(it.from))} → ${esc(dn(it.to))}<span class="tag warn">Giờ hạ cánh ước tính</span></div>
+      <details class="why"><summary>Vì sao giờ này · minh chứng</summary><div class="whybox">
+        <ul><li>Chuyến bay chọn trong phiếu yêu cầu, lấy từ danh sách giờ bay của chặng “${esc(l.name)}”.</li><li>Notion không ghi thời gian bay, máy giả định ${CFG.flightMin} phút; sau khi hạ cánh cộng ${CFG.airportOut} phút làm thủ tục ra xe.</li>${l.note?`<li>Ghi chú tuyến: ${esc(l.note)}</li>`:""}</ul>
+        <dl class="ev"><dt>Giờ bay phổ biến</dt><dd>${esc(l.timeText)}</dd></dl>
+        <div class="srcs"><a href="${esc(l.url)}" target="_blank" rel="noopener">Chặng “${esc(l.name)}” trên Notion ↗</a></div>
+      </div></details></div></li>`;
+  }
+  if(it.type==="toAirport")return `<li class="it minor">${timeCell(it,prevSes)}<div><div class="nm">Ra sân bay ${esc((S.dById.get(it.gate)||{}).gate||"")}</div><p class="ds">Có mặt trước giờ bay ${CFG.airportBefore/60} tiếng; nội thành ra sân bay tính ${CFG.toAirport} phút (giả định).</p></div></li>`;
+  if(it.type==="meal")return `<li class="it minor">${timeCell(it,prevSes)}<div><div class="nm">${esc(it.label)}</div></div></li>`;
+  return "";
+}
+function dayTitle(day,R,k,days){
+  const names=[];const add=n=>{if(n&&names[names.length-1]!==n)names.push(n)};
+  if(k===1&&R.flightIn)add(dn(R.req.origin));
+  add(dn(day.from));
+  for(const it of day.items){if(it.type==="transfer"){add(dn(it.from));add(dn(it.to))}}
+  add(dn(day.to));
+  if(k===days&&R.flightOut)add(dn(R.req.origin));
+  return names;
+}
+function renderDay(day,R){
+  R.curDate=day.date;
+  const k=day.k,days=R.req.days;
+  const names=dayTitle(day,R,k,days);
+  let prev=null;const lis=day.items.map(it=>{const h=renderItem(it,R,prev);prev=sessOf(it.start);return h}).join("");
+  const mealSrc=day.block?`<details class="why" style="display:inline-block;margin:0"><summary>theo khối ngày “${esc(day.block.b.title)}”</summary><div class="whybox"><ul><li>Khối ngày có sẵn trùng ${day.block.ov} điểm tham quan với ngày này${day.block.b.pos===day.block.pos?`, cùng vị trí “${esc(day.block.pos)}”`:""}, nên lấy bữa ăn của khối đó.</li></ul><div class="srcs"><a href="${esc(day.block.b.url)}" target="_blank" rel="noopener">Khối ngày trên Notion ↗</a></div></div></details>`:`<span class="tag warn">bữa ăn theo quy ước mặc định</span>`;
+  return `<article class="day"><header><div class="dnum">NGÀY ${k}</div><h3>${esc(names.join(" – "))}</h3>
+    <div class="dmeta">${esc(day.wd)}, ${fmtD(day.date)} · Ăn: ${esc(day.meals.join(", ")||"không")} ${mealSrc} · ${day.stay?`Nghỉ đêm: <b>${esc(dn(day.stay))}</b>`:"Kết thúc chương trình"}</div></header>
+    ${day.errors.length?`<div class="alert bad" style="margin:12px 18px">${day.errors.map(esc).join("<br>")}</div>`:""}
+    <ol class="tl">${lis||`<li class="it"><time></time><div class="muted">Không xếp được hoạt động nào.</div></li>`}</ol>
+    ${day.optional.length?`<div class="opt"><b>Gợi ý tùy chọn (tự túc):</b> ${day.optional.map(o=>`<a href="${esc(o.a.url)}" target="_blank" rel="noopener">${esc(o.a.name)}</a> (${o.ses}${o.a.open?`, ${esc(o.a.open)}`:""})`).join("; ")}</div>`:""}
+  </article>`;
+}
+
+function renderPlanTab(R){
+  const up=R.unplaced;
+  return R.days.map(d=>renderDay(d,R)).join("")+
+  `<div class="card"><h4>Điểm chưa xếp vào lịch (${up.length})</h4><p class="muted small">Các điểm thuộc nơi nghỉ đêm đã chọn nhưng không có trong lịch, kèm lý do.</p>
+   <div class="list" style="margin-top:8px">${up.map(u=>`<details class="why"><summary>${esc(u.a.name)} · ★${u.a.score}${u.x.length?" · bị loại do lịch ngoại lệ":""}</summary><div class="whybox"><ul>${u.reasons.map(r=>`<li>${esc(r)}</li>`).join("")}</ul>${u.x.map(x=>x.alt?`<p class="small"><b>Phương án thay thế ghi trên Notion:</b> ${esc(x.alt)}</p>`:"").join("")}${evRows(u.a)}${srcLinks(u.a,u.x)}</div></details>`).join("")||`<p class="muted small">Không có.</p>`}</div></div>`;
+}
+
+function renderTraceTab(R){
+  const req=R.req,best=R.route;
+  const s1=[];
+  s1.push(`${req.days} ngày × 3 buổi (sáng, chiều, tối) = ${req.days*3} buổi.`);
+  if(R.flightIn)s1.push(`Ngày 1 bay ${R.outF.label} → hạ cánh khoảng ${hm(R.outF.t+CFG.flightMin)}, bắt đầu hoạt động khoảng ${hm(R.days[0].startT)}.`);
+  else s1.push(`Ngày 1 bắt đầu ${hm(CFG.firstStartNoFlight)} tại ${dn(req.origin)}.`);
+  if(R.flightOut)s1.push(`Ngày cuối bay ${R.retF.label} → cần có mặt sân bay trước ${CFG.airportBefore/60} tiếng, ra sân bay ${CFG.toAirport} phút, nên kết thúc hoạt động trước ${hm(R.days[R.days.length-1].endLimit)}.`);
+  s1.push(`Khung buổi dùng để xếp: Sáng ${hm(WIN["Sáng"][0])}–${hm(WIN["Sáng"][1])}, Chiều ${hm(WIN["Chiều"][0])}–${hm(WIN["Chiều"][1])}, Tối ${hm(WIN["Tối"][0])}–${hm(WIN["Tối"][1])}; ngày có di chuyển phải tới nơi nghỉ trước ${hm(CFG.arriveBy)}.`);
+  const fl=[R.flightIn,R.flightOut].filter(Boolean);
+  const rows=R.trace.routes.map((r,i)=>`<tr class="${i===0?"chosen":""}"><td>${esc([dn(r.gi.id),...r.p.map(dn),dn(r.gr.id)].join(" → "))}</td><td class="n">${Math.round(r.m/6)/10} giờ</td><td>${i===0?"Chọn":r.m===best.m?"Bằng thời gian, thua ở tiêu chí phụ":""}</td></tr>`).join("");
+  const s3=R.days.map(d=>{
+    const v=d.items.filter(i=>i.type==="visit"&&!i.enroute);
+    let t=`Ngày ${d.k} (${d.wd} ${fmtD(d.date)}): xếp ${v.length} điểm tại nơi lưu trú.`;
+    if(d.plan)t+=` Có chặng ${Math.round(d.plan.travelM/6)/10} giờ; giữ ${d.plan.reserve} phút cho điểm dọc đường nổi bật (★≥4)${d.plan.lunchRes?" và 60 phút ăn trưa trên đường":""}, nên phải rời đi trước ${hm(d.plan.leaveBy)}.`;
+    return `<li>${esc(t)}</li>`;
+  }).join("");
+  const exl=[];for(const[id,e]of R.ex)for(const i of e.items)if(i.kind!=="hours")exl.push(`<li>${esc(e.a.name)}: ${esc(i.why)} ${i.x?`<a href="${esc(i.x.url)}" target="_blank" rel="noopener">Minh chứng ↗</a>`:`<a href="${esc(e.a.url)}" target="_blank" rel="noopener">Minh chứng ↗</a>`}</li>`);
+  const ins=[];R.days.forEach(d=>d.items.filter(i=>i.type==="visit"&&i.enroute).forEach(i=>ins.push(`<li>Ngày ${d.k}: chèn <b>${esc(i.a.name)}</b>. ${esc(i.why[0])}</li>`)));
+  const sk=R.skipped.filter(s=>!R.used.has(s.a.id)).map(s=>`<li>Bỏ <b>${esc(s.a.name)}</b> (${esc(s.leg?s.leg.name:"")}): ${esc(s.why)}</li>`);
+  const s5=R.days.map(d=>`<li>Ngày ${d.k}: bữa ${esc(d.meals.join(", "))} ${d.block?`lấy từ khối ngày <a href="${esc(d.block.b.url)}" target="_blank" rel="noopener">“${esc(d.block.b.title)}”</a> (trùng ${d.block.ov} điểm)`:"theo quy ước mặc định vì không có khối ngày nào trùng điểm"}.</li>`).join("");
+  return `<div class="list">
+  <div class="card stepcard"><div class="stepno">1</div><div><h4>Tính quỹ thời gian</h4><ul class="small">${s1.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>
+    ${fl.length?`<div class="srcs">${fl.map(l=>`<a href="${esc(l.url)}" target="_blank" rel="noopener">Chặng “${esc(l.name)}” ↗</a>`).join("")}</div>`:""}</div></div>
+  <div class="card stepcard"><div class="stepno">2</div><div><h4>Chọn thứ tự tuyến và phân bổ đêm</h4>
+    <p class="small">Máy thử mọi thứ tự ghé ${R.route.p.length} điểm nghỉ đêm, cộng thời gian theo bảng Chặng di chuyển. Khi bằng nhau, ưu tiên thứ tự kết thúc ở điểm gần sân bay về (ngày bay về không có chặng dài), rồi ưu tiên đi chặng xa trước.</p>
+    <div class="tbl"><table><thead><tr><th>Thứ tự tuyến</th><th>Tổng di chuyển</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+    <ul class="small" style="margin-top:10px">${R.alloc.why.map(w=>`<li>${esc(w)}</li>`).join("")}</ul>
+    <div class="srcs">${R.route.p.map(id=>`<a href="${esc(S.dById.get(id).url)}" target="_blank" rel="noopener">${esc(dn(id))} ↗</a>`).join("")}</div></div></div>
+  <div class="card stepcard"><div class="stepno">3</div><div><h4>Lấp từng buổi</h4>
+    <p class="small">Mỗi buổi: chỉ xét điểm có Khung giờ khớp buổi, còn mở cửa đúng ngày, không vướng Lịch ngoại lệ; chọn cụm có tổng độ nổi bật cao nhất (điểm có cụm trùng tên địa phương được tính là điểm lẻ), rồi gom các điểm cùng cụm liền nhau.</p>
+    <ul class="small">${s3}</ul>${exl.length?`<p class="small"><b>Bị loại theo ngày:</b></p><ul class="small">${exl.join("")}</ul>`:""}</div></div>
+  <div class="card stepcard"><div class="stepno">4</div><div><h4>Chèn điểm ghé dọc đường</h4>
+    <ul class="small">${ins.join("")||"<li>Không chèn điểm nào.</li>"}${sk.join("")}</ul></div></div>
+  <div class="card stepcard"><div class="stepno">5</div><div><h4>Xuất văn bản</h4><ul class="small">${s5}</ul><p class="small muted">Câu chữ lấy từ cột “Mô tả mẫu” của từng điểm.</p></div></div>
+  </div>`;
+}
+
+function renderWarnTab(R){
+  if(!R.warnings.length)return `<div class="card"><p>Không phát hiện vấn đề dữ liệu nào liên quan đến lịch trình này.</p></div>`;
+  return `<div class="list">${R.warnings.map(w=>`<div class="card wcard ${w.lvl==="bad"?"bad":""}"><h4>${esc(w.title)}</h4>${w.body?`<p class="small">${esc(w.body)}</p>`:""}${w.items.length?`<ul>${w.items.map(i=>`<li><a href="${esc(i.url)}" target="_blank" rel="noopener">${esc(i.label)}</a></li>`).join("")}</ul>`:""}</div>`).join("")}</div>`;
+}
+
+function buildText(R){
+  const L=[];const req=R.req;
+  const head=headName(R);
+  L.push(`${head.toUpperCase()} | ${req.days} NGÀY ${req.days-1} ĐÊM`);
+  L.push(`Khởi hành: ${R.days[0].wd}, ${fmtDY(req.date)} từ ${dn(req.origin)}`);
+  L.push("");
+  for(const d of R.days){
+    const names=dayTitle(d,R,d.k,req.days);
+    L.push(`NGÀY ${d.k} | ${names.join(" – ").toUpperCase()} (Ăn ${d.meals.map(m=>m.toLowerCase()).join(", ")||"tự túc"})`);
+    const bySes={"Sáng":[],"Chiều":[],"Tối":[]};
+    for(const it of d.items){
+      const s=sessOf(it.start);let line="";
+      if(it.type==="flight"){
+        const g1=(S.dById.get(it.from)||{}).gate,g2=(S.dById.get(it.to)||{}).gate;
+        line=it.from===req.origin
+          ?`Quý khách tập trung tại sân bay ${g1||dn(it.from)}, đáp chuyến bay ${it.f.code||""} (${hm(it.f.t)}) đi ${dn(it.to)}. Đến sân bay ${g2||dn(it.to)}, xe đón đoàn.`
+          :`Đáp chuyến bay ${it.f.code||""} (${hm(it.f.t)}) về ${dn(it.to)}. Kết thúc chương trình.`;
+      }
+      else if(it.type==="transfer")line=`Khởi hành đi ${dn(it.to)}${it.l.km?` (${it.l.km} km${it.l.timeText&&it.l.mode!=="Máy bay"?`, khoảng ${it.l.timeText}`:""})`:""}.`;
+      else if(it.type==="visit")line=(it.enroute?"Trên đường, ghé ":"")+(it.a.desc?(it.enroute?it.a.desc.charAt(0).toLowerCase()+it.a.desc.slice(1):it.a.desc):`Tham quan ${it.a.name}.`)+(it.a.mode==="Tự túc"?" (Chi phí tự túc)":"");
+      else if(it.type==="meal")line=it.label.replace("Ăn","Dùng bữa")+".";
+      else if(it.type==="toAirport")line=`Xe đưa đoàn ra sân bay ${(S.dById.get(it.gate)||{}).gate||""}.`;
+      if(line)bySes[s].push(line);
+    }
+    for(const s of ["Sáng","Chiều","Tối"])if(bySes[s].length)L.push(`${s}: ${bySes[s].join(" ")}`);
+    if(d.optional.length)L.push(`Tùy chọn (tự túc): ${d.optional.map(o=>o.a.name).join("; ")}.`);
+    if(d.stay)L.push(`Nghỉ đêm tại ${dn(d.stay)}.`);
+    L.push("");
+  }
+  L.push("— Bản nháp do máy gợi ý. Điều hành kiểm tra giờ giấc, giá vé và tình trạng điểm tham quan trước khi gửi khách.");
+  return L.join("\n");
+}
+
+function render(R){
+  state.last=R;
+  const out=$("#out");
+  if(R.errors.length){out.innerHTML=`<div class="alert bad"><b>Máy chưa thiết kế được lịch trình.</b><br>${R.errors.map(esc).join("<br>")}</div>`;return}
+  const req=R.req;
+  const head=headName(R);
+  const nAl=R.alloc.al;
+  const nights=`<div class="nights">${nAl.map((x,i)=>`${i?'<span class="arrow">→</span>':""}<div class="nstop"><b>${esc(dn(x.id))}</b><div class="step"><button type="button" data-n="${x.id}" data-d="-1" aria-label="Bớt 1 đêm ở ${esc(dn(x.id))}">−</button><span>${x.n} đêm</span><button type="button" data-n="${x.id}" data-d="1" aria-label="Thêm 1 đêm ở ${esc(dn(x.id))}">+</button></div></div>`).join("")}
+    ${R.alloc.manual?`<span class="tag warn">Đã chỉnh tay</span> <button class="btn sm" type="button" id="resetN">Về phân bổ của máy</button>`:`<span class="tag acc">Máy phân bổ</span>`}<span class="muted small" id="nMsg"></span></div>`;
+  const visits=R.days.reduce((s,d)=>s+d.items.filter(i=>i.type==="visit").length,0);
+  const wc=R.warnings.length;
+  out.innerHTML=`<section class="panel sum">
+      <h2>${esc(head)} · ${req.days} ngày ${req.days-1} đêm</h2>
+      <div class="meta">Khởi hành ${esc(R.days[0].wd)}, ${fmtDY(req.date)} từ ${esc(dn(req.origin))}${R.flightIn?` · bay ${esc(R.outF.label)}`:""}${R.flightOut?` · về ${esc(R.retF.label)}`:""} · ${visits} điểm tham quan · ${R.unplaced.length} điểm chưa xếp</div>
+      ${nights}
+    </section>
+    <div class="tabs" role="tablist">
+      <button role="tab" data-tab="plan" aria-selected="${state.tab==="plan"}">Lịch trình</button>
+      <button role="tab" data-tab="trace" aria-selected="${state.tab==="trace"}">Diễn giải 5 bước</button>
+      <button role="tab" data-tab="warn" aria-selected="${state.tab==="warn"}">Cảnh báo dữ liệu${wc?`<span class="cnt">${wc}</span>`:""}</button>
+      <button role="tab" data-tab="text" aria-selected="${state.tab==="text"}">Văn bản gửi khách</button>
+    </div>
+    <div id="tabBody" class="list"></div>`;
+  renderTab();
+  out.querySelectorAll(".tabs button").forEach(b=>b.addEventListener("click",()=>{state.tab=b.dataset.tab;out.querySelectorAll(".tabs button").forEach(x=>x.setAttribute("aria-selected",x===b));renderTab()}));
+  out.querySelectorAll("[data-n]").forEach(b=>b.addEventListener("click",()=>adjustNight(b.dataset.n,+b.dataset.d)));
+  const rn=$("#resetN");if(rn)rn.addEventListener("click",()=>{state.override=null;run()});
+}
+function renderTab(){
+  const R=state.last,body=$("#tabBody");if(!R||!body)return;
+  if(state.tab==="plan")body.innerHTML=renderPlanTab(R);
+  else if(state.tab==="trace")body.innerHTML=renderTraceTab(R);
+  else if(state.tab==="warn")body.innerHTML=renderWarnTab(R);
+  else{
+    const t=buildText(R);
+    body.innerHTML=`<div class="bar"><span class="muted small">Ghép từ “Mô tả mẫu” trên Notion. Kiểm tra trước khi gửi khách.</span><button class="btn sm" type="button" id="copy">Sao chép văn bản</button></div><pre class="text" id="ptext">${esc(t)}</pre>`;
+    $("#copy").addEventListener("click",async e=>{
+      try{await navigator.clipboard.writeText(t);e.target.textContent="Đã sao chép"}catch(err){const r=document.createRange();r.selectNodeContents($("#ptext"));const s=getSelection();s.removeAllRanges();s.addRange(r);e.target.textContent="Đã chọn sẵn, nhấn Ctrl/⌘+C"}
+      setTimeout(()=>{e.target.textContent="Sao chép văn bản"},2500);
+    });
+  }
+}
+function adjustNight(id,d){
+  const R=state.last;if(!R||!R.alloc)return;
+  const cur={};R.alloc.al.forEach(x=>cur[x.id]=x.n);
+  const nights=R.req.days-1;
+  if(cur[id]+d<1){$("#nMsg").textContent="Mỗi điểm cần ít nhất 1 đêm.";return}
+  cur[id]+=d;
+  // keep total: take from / give to another stop
+  const others=R.alloc.al.map(x=>x.id).filter(x=>x!==id);
+  if(!others.length){$("#nMsg").textContent="Chỉ có 1 điểm nghỉ đêm; đổi số ngày ở phiếu yêu cầu.";return}
+  const donor=d>0?others.slice().sort((a,b)=>cur[b]-cur[a]).find(x=>cur[x]>1):others.slice().sort((a,b)=>cur[a]-cur[b])[0];
+  if(!donor){$("#nMsg").textContent="Không còn điểm nào bớt được đêm.";return}
+  cur[donor]-=d;
+  if(Object.values(cur).reduce((s,x)=>s+x,0)!==nights)return;
+  state.override=cur;run();
+}
+
+/* ---------------- Form ---------------- */
+function nextThursday(){const d=new Date();d.setDate(d.getDate()+3);while(d.getDay()!==4)d.setDate(d.getDate()+1);return fmtISO(d)}
+function setupForm(){
+  const flightOrigins=[...new Set(S.L.filter(l=>l.mode==="Máy bay"&&l.from).map(l=>l.from))];
+  const origins=[...new Set([...flightOrigins])].filter(id=>S.dById.has(id));
+  const o=$("#origin");
+  o.innerHTML=origins.map(id=>`<option value="${id}">${esc(dn(id))}</option>`).join("");
+  const hcm=origins.find(id=>/hồ chí minh/i.test(dn(id)));
+  o.value=state.origin=hcm||origins[0];
+  o.disabled=false;
+  if(!S.adj.has(state.origin))state.stops.delete(state.origin);
+  const stays=S.D.filter(d=>d.canStay&&(d.id!==state.origin||S.adj.has(d.id))).sort((a,b)=>a.name.localeCompare(b.name,"vi"));
+  if(!state.stops.size){const hn=stays.find(d=>d.name==="Hà Nội"),sp_=stays.find(d=>d.name==="Sapa");if(hn)state.stops.add(hn.id);if(sp_)state.stops.add(sp_.id)}
+  const box=$("#stops");
+  box.innerHTML=stays.map(d=>`<button type="button" class="chip" data-id="${d.id}" aria-pressed="${state.stops.has(d.id)}">${esc(d.name)}</button>`).join("");
+  box.querySelectorAll(".chip").forEach(b=>b.addEventListener("click",()=>{const id=b.dataset.id;state.stops.has(id)?state.stops.delete(id):state.stops.add(id);b.setAttribute("aria-pressed",state.stops.has(id));state.override=null;refreshFlights()}));
+  if(!$("#date").value)$("#date").value=nextThursday();
+  refreshFlights();updateHints();
+  $("#run").disabled=false;
+}
+function refreshFlights(){
+  if(!S)return;
+  const stops=[...state.stops];
+  const fo=$("#fOut"),fr=$("#fRet"),row=$("#flightRow");
+  if(!stops.length){row.hidden=true;return}
+  const routes=chooseRoute(state.origin,stops.slice(0,6));
+  const best=routes[0];
+  if(!best||!Number.isFinite(best.m)||(!best.gi.flight&&!best.gr.flight)){row.hidden=true;return}
+  row.hidden=false;
+  const fill=(sel,l,prefer)=>{
+    const prev=sel.value;
+    if(!l){sel.innerHTML=`<option value="">Không bay</option>`;sel.disabled=true;return}
+    const fs=flightsOf(l);sel.disabled=false;
+    sel.innerHTML=fs.map(f=>`<option>${esc(f.label)}</option>`).join("")||`<option value="">(Notion chưa có giờ bay)</option>`;
+    if(fs.some(f=>f.label===prev))sel.value=prev;
+    else{const p=fs.slice().sort((a,b)=>Math.abs(a.t-prefer)-Math.abs(b.t-prefer))[0];if(p)sel.value=p.label}
+  };
+  fill(fo,best.gi.flight,360);fill(fr,best.gr.flight,1200);
+}
+function updateHints(){
+  const d=Math.max(2,Math.min(12,+$("#days").value||4));
+  $("#nightsHint").textContent=`${d} ngày ${d-1} đêm`;
+  const v=$("#date").value;$("#wdHint").textContent=v?wdOf(v):"";
+}
+function readReq(){
+  return{origin:$("#origin").value,stops:[...state.stops],days:Math.max(2,Math.min(12,+$("#days").value||4)),date:$("#date").value||nextThursday(),
+    outFlight:$("#fOut").value,retFlight:$("#fRet").value,effort:state.effort,defDur:Math.max(15,+$("#defDur").value||90),hop:Math.max(0,+$("#hop").value||0),override:state.override};
+}
+function run(){
+  if(!S)return;
+  let R;
+  try{R=plan(readReq())}catch(e){console.error(e);$("#out").innerHTML=`<div class="alert bad"><b>Lỗi khi tính lịch trình.</b><br>${esc(e.message||e)}</div>`;return}
+  render(R);
+}
+$("#form").addEventListener("submit",e=>{e.preventDefault();state.tab="plan";run()});
+$("#origin").addEventListener("change",e=>{state.origin=e.target.value;state.override=null;setupForm()});
+$("#days").addEventListener("input",()=>{state.override=null;updateHints()});
+$("#date").addEventListener("input",updateHints);
+$("#effort").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{state.effort=b.dataset.v;$("#effort").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x===b))}));
+
+/* ---------------- Loading ---------------- */
+const NOTION_P="https://app.notion.com/p/";
+const TABLES={"diem-den":"Điểm đến","diem-tham-quan":"Điểm tham quan","chang":"Chặng di chuyển","ngoai-le":"Lịch ngoại lệ","khoi-ngay":"Khối ngày"};
+function setStatus(kind,text){const p=$("#status");p.className="pill "+kind;$("#statusText").textContent=text}
+function fromStore(docs){
+  const g=k=>((docs[k]||{}).rows||[]).map(r=>({...r,url:NOTION_P+r.id}));
+  return{D:g("diem-den"),A:g("diem-tham-quan"),L:g("chang"),X:g("ngoai-le"),K:g("khoi-ngay")};
+}
+function showLoadError(msg){
+  $("#out").innerHTML=`<div class="alert bad"><b>Chưa đọc được dữ liệu.</b><br>${esc(msg)}</div>`;
+}
+async function start(){
+  setStatus("loading","Đang đọc dữ liệu…");
+  const keys=[...Object.keys(TABLES),"meta"];
+  let docs={};
+  try{
+    const res=await Promise.all(keys.map(k=>fetch("data/"+k+".json",{cache:"no-cache"}).then(r=>{if(!r.ok)throw new Error(`data/${k}.json trả về mã ${r.status}`);return r.json()})));
+    keys.forEach((k,i)=>docs[k]=res[i]);
+  }catch(e){
+    setStatus("bad","Không đọc được dữ liệu");
+    showLoadError(`Không tải được file dữ liệu (${e.message}). Nếu đang mở file index.html trực tiếp trên máy, hãy mở qua GitHub Pages hoặc một web server.`);
+    return;
+  }
+  S=index(fromStore(docs));
+  const at=docs.meta&&docs.meta.syncedAt?new Date(docs.meta.syncedAt):null;
+  setStatus("ok",`${S.A.length} điểm tham quan${at?` · dữ liệu chép từ Notion ngày ${pad(at.getDate())}/${pad(at.getMonth()+1)}/${at.getFullYear()}`:""}`);
+  setupForm();
+  run();
+}
+start();
+})();
+</script>
+
+</body>
+</html>
