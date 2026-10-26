@@ -12,6 +12,7 @@ data/
   chang.json            3. Chặng di chuyển (thời gian, km, giờ bay, điểm ghé dọc đường)
   ngoai-le.json         4. Lịch ngoại lệ (đóng cửa, trùng tu, phương án thay thế)
   khoi-ngay.json        5. Khối ngày (dùng để đối chiếu bữa ăn)
+  lich-chay.json        8. Lịch chạy dịch vụ (giờ tàu, lên/rời du thuyền, suất diễn, chương trình trên tàu)
   quy-tac.json          7. Quy tắc thiết kế (ví dụ: gom các điểm cùng nhóm vé vào một ngày)
   toa-do.json           Tọa độ địa điểm cho bản đồ (ước tính, chưa có trên Notion)
   meta.json             Thời điểm chép dữ liệu từ Notion
@@ -33,6 +34,17 @@ Bảng “7. Quy tắc thiết kế” trên Notion chứa các quy tắc nhân 
 - **Không xếp cùng ngày**: các điểm trong nhóm không được nằm chung một ngày.
 
 Mức “Bắt buộc” thì máy loại hẳn; mức “Ưu tiên” thì máy chỉ xếp khi buổi đó không còn điểm nào khác. Loại “Khác (chưa tự động)” chỉ hiển thị trong tab “Quy tắc” để nhân viên tham khảo. Mỗi điểm bị ảnh hưởng đều ghi rõ quy tắc trong phần “Vì sao chọn” hoặc “Điểm chưa xếp”, kèm link tới dòng quy tắc.
+
+## Mốc giờ cố định (Lịch chạy dịch vụ)
+
+Bảng “8. Lịch chạy dịch vụ” ghi các dịch vụ có giờ cố định. Mỗi dòng gắn với một **chặng** (tàu, thuyền, xe theo giờ) hoặc một **điểm tham quan** có suất (show, chương trình trên tàu, có thể giới hạn bằng cột “Khi ở tại”).
+
+- **Chặng có giờ chạy:** máy tính ngược từ giờ khởi hành: trừ “Có mặt trước”, “Dự phòng đường” và thời gian đường tới bến, ra giờ phải rời đi. Điểm tham quan trước đó chỉ được xếp trong khung này, ăn trưa dọc đường chỉ khi vẫn kịp, và xe xuất phát theo giờ tính ngược thay vì ra bến quá sớm.
+- **Chọn tuyến:** thứ tự tuyến nào làm khách trễ một dịch vụ mức “Cứng” bị loại, máy chuyển sang thứ tự kế tiếp và ghi lý do trong tab “Diễn giải 5 bước”. Nếu không thứ tự nào kịp, lịch vẫn hiện nhưng báo đỏ “Trễ giờ”.
+- **Điểm có suất cố định:** chỉ xếp đúng giờ suất; điểm thường phải xong trước suất gần nhất.
+- **Khi nghỉ đêm trên du thuyền:** khách theo chương trình của tàu, máy chỉ xếp các hoạt động có trong bảng này cho tàu đó.
+
+Dòng chưa đánh dấu “Đã xác minh” hiện cảnh báo để điều hành kiểm tra với nhà cung cấp.
 
 ## Logic gợi ý (5 bước)
 
