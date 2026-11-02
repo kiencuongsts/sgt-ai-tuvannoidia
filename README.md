@@ -35,6 +35,15 @@ Bảng “7. Quy tắc thiết kế” trên Notion chứa các quy tắc nhân 
 
 Mức “Bắt buộc” thì máy loại hẳn; mức “Ưu tiên” thì máy chỉ xếp khi buổi đó không còn điểm nào khác. Loại “Khác (chưa tự động)” chỉ hiển thị trong tab “Quy tắc” để nhân viên tham khảo. Mỗi điểm bị ảnh hưởng đều ghi rõ quy tắc trong phần “Vì sao chọn” hoặc “Điểm chưa xếp”, kèm link tới dòng quy tắc.
 
+## Tour và dịch vụ đang bán (SGT Channel API)
+
+Tab **Tour đang bán** gợi ý các tour đang mở bán cùng nơi khởi hành và đi qua các nơi nghỉ đêm đã chọn, kèm ngày khởi hành gần ngày khách chọn, giá người lớn/trẻ em, số chỗ còn, chương trình từng ngày, và các dịch vụ đang bán tại những nơi đó. Mức gần giống = 60% theo nơi nghỉ đêm + 40% theo điểm tham quan trùng với lịch máy gợi ý, trừ điểm khi lệch số ngày.
+
+- `scripts/sync-sgt.mjs` lấy dữ liệu chỉ đọc (Tours, Services; không gọi Booking) → `data/sgt-tours.json`, `data/sgt-services.json`.
+- `scripts/build-sgt-app.mjs` rút gọn tour trong nước và dịch vụ cho app → `data/sgt-app.json`.
+- `.github/workflows/sync-sgt.yml` chạy mỗi ngày lúc 03:17 giờ Việt Nam (hoặc bấm Run workflow). Cần khai báo `SGT_CLIENT_ID`, `SGT_CLIENT_SECRET` trong Settings → Secrets and variables → Actions; tùy chọn biến `SGT_API_BASE` (mặc định `https://api.saigontourist.me`).
+- API giới hạn số request mỗi phút; script tự chờ và thử lại.
+
 ## Thử nghiệm với đồng nghiệp
 
 Nút **Đánh giá phương án này** (dưới tóm tắt lịch trình) sao chép tóm tắt phương án: yêu cầu, lịch từng ngày, các chỉnh tay, điểm chưa xếp, cảnh báo. Người thử dán vào bảng “9. Đánh giá thử nghiệm” trên Notion rồi chấm mức phù hợp, tuyến, điểm tham quan, giờ giấc, lý do/minh chứng.

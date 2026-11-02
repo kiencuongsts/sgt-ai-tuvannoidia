@@ -1,0 +1,29 @@
+name: Đồng bộ Tour & Services từ SGT API
+on:
+  schedule:
+    - cron: "17 20 * * *"   # 03:17 giờ Việt Nam mỗi ngày
+  workflow_dispatch: {}
+permissions:
+  contents: write
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Lấy dữ liệu
+        env:
+          SGT_CLIENT_ID: ${{ secrets.SGT_CLIENT_ID }}
+          SGT_CLIENT_SECRET: ${{ secrets.SGT_CLIENT_SECRET }}
+          SGT_API_BASE: ${{ vars.SGT_API_BASE || 'https://api.saigontourist.me' }}
+        run: node scripts/sync-sgt.mjs && node scripts/build-sgt-app.mjs
+      - name: Ghi lại nếu có thay đổi
+        run: |
+          git config user.name "sgt-sync-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add data/sgt-tours.json data/sgt-services.json data/sgt-app.json
+          git diff --cached --quiet || git commit -m "Đồng bộ Tour & Services từ SGT API"
+          git push

@@ -1616,6 +1616,64 @@ function renderRuleTab(R){
   }).join("");
   return add+`<div class="list">${schedCard(R)}${cards}</div>`;
 }
+
+/* ---------------- Tour và dịch vụ đang bán (SGT Channel API) ---------------- */
+const sgtNorm=s=>String(s||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/đ/g,"d").replace(/[^a-z0-9]+/g,"");
+const sgtCore=n=>String(n||"").split(/\s+\(|\s+[–-]\s+/)[0];
+function sgtIndex(){
+  for(const t of S.sgt.tours||[]){t._n=sgtNorm([t.title,...(t.dest||[]),...(t.itin||[]).map(d=>`${d.t} ${(d.b||[]).join(" ")} ${d.x||""}`)].join(" "))}
+  for(const s of S.sgt.services||[]){s._n=sgtNorm([s.title,...(s.dest||[])].join(" "))}
+}
+function sgtStopKeys(id){
+  const d=S.dById.get(id);if(!d)return[];
+  const base=d.name.replace(/^TP\.?\s*/,"");
+  return[...new Set([sgtCore(base),...base.split(/\s+[–-]\s+/)].map(sgtNorm).filter(k=>k.length>=4))];
+}
+function sgtMatches(R){
+  if(!S.sgt||!S.sgt.tours)return[];
+  const req=R.req,org=sgtNorm(dn(req.origin).replace(/^TP\.?\s*/,""));
+  const stops=req.stops.map(id=>({id,keys:sgtStopKeys(id)}));
+  const visits=[...new Map(R.days.flatMap(d=>d.items.filter(i=>i.type==="visit").map(i=>[i.a.id,i.a]))).values()]
+    .map(a=>({a,k:sgtNorm(sgtCore(a.name))})).filter(x=>x.k.length>=5);
+  const day0=parseD(req.date).getTime();
+  const out=[];
+  for(const t of S.sgt.tours){
+    if(sgtNorm(String(t.start||"").replace(/^TP\.?\s*/,""))!==org)continue;
+    const stopHit=stops.filter(s=>s.keys.some(k=>t._n.includes(k)));
+    if(!stopHit.length)continue;
+    const attHit=visits.filter(v=>t._n.includes(v.k));
+    const score=0.6*stopHit.length/stops.length+0.4*(visits.length?attHit.length/visits.length:0)-0.05*Math.abs((t.days||0)-req.days);
+    const deps=(t.codes||[]).filter(c=>c.from&&parseD(c.from).getTime()>=day0-7*864e5).map(c=>({...c,gap:Math.round((parseD(c.from).getTime()-day0)/864e5)})).sort((a,b)=>Math.abs(a.gap)-Math.abs(b.gap)).slice(0,4).sort((a,b)=>a.from<b.from?-1:1);
+    out.push({t,score,stopHit,attHit,visits:visits.length,deps});
+  }
+  return out.filter(m=>m.score>=0.3).sort((a,b)=>b.score-a.score||(a.t.min||0)-(b.t.min||0)).slice(0,6);
+}
+function sgtServices(R){
+  if(!S.sgt||!S.sgt.services)return[];
+  const keys=R.req.stops.flatMap(sgtStopKeys);
+  return S.sgt.services.filter(s=>keys.some(k=>s._n.includes(k))).slice(0,10);
+}
+function renderSgtTab(R){
+  if(!S.sgt)return `<div class="card"><p>Chưa có dữ liệu tour đang bán. Dữ liệu được lấy từ SGT Channel API theo lịch đồng bộ.</p></div>`;
+  const M=R._sgt||(R._sgt=sgtMatches(R)),SV=sgtServices(R);
+  const at=S.sgt.syncedAt?new Date(S.sgt.syncedAt):null;
+  const money=n=>n==null?"–":n.toLocaleString("vi-VN")+"đ";
+  const head=`<p class="muted small">Tour đang mở bán cùng nơi khởi hành, có đi qua các nơi nghỉ đêm đã chọn. Xếp theo mức gần giống: 60% theo nơi nghỉ đêm, 40% theo điểm tham quan trùng với lịch máy gợi ý, trừ điểm khi lệch số ngày. Giá và chỗ trống lấy từ SGT Channel API${at?` lúc ${pad(at.getHours())}:${pad(at.getMinutes())} ${pad(at.getDate())}/${pad(at.getMonth()+1)}/${at.getFullYear()}`:""}; kiểm tra lại trên hệ thống trước khi báo khách.</p>`;
+  const cards=M.map(m=>{
+    const t=m.t;
+    const deps=m.deps.length?`<div class="tbl"><table><thead><tr><th>Mã tour</th><th>Ngày đi – về</th><th class="n">Người lớn</th><th class="n">Trẻ em</th><th class="n">Còn chỗ</th></tr></thead><tbody>${m.deps.map(c=>`<tr class="${Math.abs(c.gap)<=3?"chosen":""}"><td>${esc(c.code)}</td><td>${fmtD(c.from)} – ${fmtDY(c.to)}${Math.abs(c.gap)<=3?` <span class="tag acc">gần ngày khách chọn</span>`:""}</td><td class="n">${money(c.adult)}</td><td class="n">${money(c.child)}</td><td class="n">${c.seats??"–"}${c.ok===false?" (ngừng nhận)":""}</td></tr>`).join("")}</tbody></table></div>`:`<p class="small muted">Chưa có ngày khởi hành từ ${fmtD(R.req.date)} trở đi.</p>`;
+    return `<div class="card"><h4 style="display:flex;gap:8px;flex-wrap:wrap;align-items:baseline"><a href="https://saigontourist.net/tour/${esc(t.slug)}" target="_blank" rel="noopener">${esc(t.title)} ↗</a><span class="tag">${t.days}N${t.nights}Đ</span>${t.label?`<span class="tag warn">${esc(t.label)}</span>`:""}</h4>
+      <p class="small">Từ ${money(t.min)} · ${esc(t.transport||"")} · ${(t.cats||[]).map(esc).join(", ")}</p>
+      <ul class="small"><li>Trùng nơi nghỉ đêm: ${m.stopHit.map(s=>esc(dn(s.id))).join(", ")} (${m.stopHit.length}/${R.req.stops.length}).</li>
+      <li>Trùng điểm tham quan với lịch máy gợi ý: ${m.attHit.length}/${m.visits}${m.attHit.length?`: ${m.attHit.slice(0,8).map(v=>esc(v.a.name)).join(", ")}${m.attHit.length>8?"…":""}`:""}.</li>
+      ${t.days!==R.req.days?`<li>Khác số ngày: tour ${t.days} ngày, yêu cầu ${R.req.days} ngày.</li>`:""}</ul>
+      ${deps}
+      <details class="why"><summary>Chương trình từng ngày</summary><div class="whybox"><ul>${(t.itin||[]).map(d=>`<li><b>${esc(d.t)}</b>${d.b&&d.b.length?`: ${esc(d.b.slice(0,10).join("; "))}`:""}</li>`).join("")||"<li>API chưa có nội dung chương trình.</li>"}</ul>${(t.addons||[]).length?`<p class="small"><b>Dịch vụ cộng thêm:</b> ${t.addons.map(a=>`${esc(a.name)} (${money(a.price)})`).join("; ")}</p>`:""}</div></details></div>`;
+  }).join("")||`<div class="card"><p>Không có tour đang bán nào cùng nơi khởi hành đi qua các nơi nghỉ đêm này. Đây có thể là cơ hội thiết kế tour mới.</p></div>`;
+  const srv=SV.length?`<div class="card"><h4>Dịch vụ đang bán tại các nơi đã chọn (${SV.length})</h4><div class="tbl"><table><thead><tr><th>Dịch vụ</th><th>Nơi</th><th class="n">Giá từ</th><th>Ngày còn bán gần nhất</th></tr></thead><tbody>${SV.map(s=>`<tr><td>${esc(s.title)}${s.label?` <span class="tag">${esc(s.label)}</span>`:""}</td><td>${esc((s.dest||[]).join(", ")||s.addr||"")}</td><td class="n">${money(s.price)}</td><td>${(s.nextDates||[]).filter(d=>d>=R.req.date).slice(0,3).map(fmtD).join(", ")||"–"}</td></tr>`).join("")}</tbody></table></div></div>`:"";
+  return head+`<div class="list">${cards}${srv}</div>`;
+}
+
 function renderWarnTab(R){
   if(!R.warnings.length)return `<div class="card"><p>Không phát hiện vấn đề dữ liệu nào liên quan đến lịch trình này.</p></div>`;
   return `<div class="list">${R.warnings.map(w=>`<div class="card wcard ${w.lvl==="bad"?"bad":""}"><h4>${esc(w.title)}</h4>${w.body?`<p class="small">${esc(w.body)}</p>`:""}${w.items.length?`<ul>${w.items.map(i=>`<li><a href="${esc(i.url)}" target="_blank" rel="noopener">${esc(i.label)}</a></li>`).join("")}</ul>`:""}</div>`).join("")}</div>`;
@@ -1676,6 +1734,7 @@ function render(R){
     <div class="tabs" role="tablist">
       <button role="tab" data-tab="plan" aria-selected="${state.tab==="plan"}">Lịch trình</button>
       <button role="tab" data-tab="trace" aria-selected="${state.tab==="trace"}">Diễn giải 5 bước</button>
+      <button role="tab" data-tab="sgt" aria-selected="${state.tab==="sgt"}">Tour đang bán${S.sgt?`<span class="cnt">${(R._sgt=R._sgt||sgtMatches(R)).length}</span>`:""}</button>
       <button role="tab" data-tab="rule" aria-selected="${state.tab==="rule"}">Quy tắc &amp; giờ cố định${(S.rulesC||[]).filter(c=>c.r.on).length?`<span class="cnt">${(S.rulesC||[]).filter(c=>c.r.on).length}</span>`:""}</button>
       <button role="tab" data-tab="warn" aria-selected="${state.tab==="warn"}">Cảnh báo dữ liệu${wc?`<span class="cnt">${wc}</span>`:""}</button>
       <button role="tab" data-tab="text" aria-selected="${state.tab==="text"}">Văn bản gửi khách</button>
@@ -1697,6 +1756,7 @@ function renderTab(){
   else if(state.tab==="trace")body.innerHTML=renderTraceTab(R);
   else if(state.tab==="warn")body.innerHTML=renderWarnTab(R);
   else if(state.tab==="rule")body.innerHTML=renderRuleTab(R);
+  else if(state.tab==="sgt")body.innerHTML=renderSgtTab(R);
   else{
     const t=buildText(R);
     body.innerHTML=`<div class="bar"><span class="muted small">Ghép từ “Mô tả mẫu” trên Notion. Kiểm tra trước khi gửi khách.</span><button class="btn sm" type="button" id="copy">Sao chép văn bản</button></div><pre class="text" id="ptext">${esc(t)}</pre>`;
@@ -1913,9 +1973,10 @@ async function start(){
     showLoadError(`Không tải được file dữ liệu (${e.message}). Nếu đang mở file index.html trực tiếp trên máy, hãy mở qua GitHub Pages hoặc một web server.`);
     return;
   }
-  for(const k of ["toa-do","quy-tac","lich-chay"]){try{docs[k]=await fetch("data/"+k+".json",{cache:"no-cache"}).then(r=>r.ok?r.json():null)}catch(e){}}
+  for(const k of ["toa-do","quy-tac","lich-chay","sgt-app"]){try{docs[k]=await fetch("data/"+k+".json",{cache:"no-cache"}).then(r=>r.ok?r.json():null)}catch(e){}}
   S=compileRules(index(fromStore(docs)));
   S.coords=new Map(((docs["toa-do"]||{}).rows||[]).map(r=>[r.id,r]));
+  S.sgt=docs["sgt-app"]&&docs["sgt-app"].tours?docs["sgt-app"]:null;if(S.sgt)sgtIndex();
   const at=docs.meta&&docs.meta.syncedAt?new Date(docs.meta.syncedAt):null;S.syncedAt=docs.meta&&docs.meta.syncedAt;
   setStatus("ok",`${S.A.length} điểm tham quan${at?` · dữ liệu chép từ Notion ngày ${pad(at.getDate())}/${pad(at.getMonth()+1)}/${at.getFullYear()}`:""}`);
   setupForm();
