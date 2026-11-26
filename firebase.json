@@ -1,0 +1,29 @@
+{
+  "hosting": {
+    "public": ".",
+    "ignore": [
+      "firebase.json",
+      ".firebaserc",
+      "storage.rules",
+      "**/.git/**",
+      "scripts/**",
+      "docs/**",
+      "PRD.md",
+      "README.md",
+      "data/sgt-tours.json",
+      "data/sgt-services.json",
+      "data/sgt-app.json"
+    ],
+    "headers": [
+      {
+        "source": "data/**",
+        "headers": [
+          { "key": "Cache-Control", "value": "public, max-age=3600" }
+        ]
+      }
+    ]
+  },
+  "storage": {
+    "rules": "storage.rules"
+  }
+}
