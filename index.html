@@ -179,6 +179,16 @@ div.insrow{margin:0 18px 12px}
 @keyframes itflash{from{background:var(--accent-soft)}to{background:transparent}}
 @media (prefers-reduced-motion:reduce){.it.flash{animation:none;box-shadow:inset 3px 0 0 var(--accent)}}
 
+/* ---- thứ tự điểm đến ---- */
+.orderbar{margin-top:8px;padding:7px 10px;background:var(--sunk);border-radius:8px;border:1px solid var(--line);display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.orderbar .olabel{font-size:12px;color:var(--muted);white-space:nowrap;flex-shrink:0}
+.oitems{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+.ostop{display:inline-flex;align-items:center;gap:0;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:1px 7px 1px 4px;font-size:12.5px;font-weight:500}
+.omv{width:17px;height:20px;border:0;background:none;cursor:pointer;color:var(--muted);font-size:11px;border-radius:3px;padding:0;line-height:1;display:grid;place-items:center;flex-shrink:0}
+.omv:hover:not(:disabled){background:var(--accent-soft);color:var(--accent)}
+.omv:disabled{opacity:.22;cursor:default}
+.oarrow{color:var(--muted);font-size:11px;user-select:none}
+
 /* ---- bản đồ hành trình ---- */
 .mapwrap{display:flex;flex-direction:column;gap:6px}
 .tm{position:relative;height:460px;border-radius:var(--r);overflow:hidden;border:1px solid var(--line);background:var(--map-sea)}
@@ -265,7 +275,14 @@ body.tm-lock{overflow:hidden}
         <div class="f">
           <span class="lbl" id="stopsLbl">Điểm nghỉ đêm</span>
           <div class="chips" id="stops" role="group" aria-labelledby="stopsLbl"><span class="muted small">Đang tải danh sách điểm đến…</span></div>
-          <span class="hint">Chọn nơi khách ngủ lại. Máy tự sắp thứ tự tuyến.</span>
+          <span class="hint">Chọn nơi khách ngủ lại. Dùng ‹ › để thay đổi thứ tự.</span>
+          <div id="orderWrap" hidden>
+            <div class="orderbar">
+              <span class="olabel">Thứ tự:</span>
+              <div class="oitems" id="orderSeq"></div>
+              <button type="button" class="btn sm" id="resetOrder" hidden>Thứ tự tối ưu</button>
+            </div>
+          </div>
         </div>
         <div class="row2">
           <div class="f">
@@ -368,7 +385,7 @@ const sessOf=t=>t<CFG.lunchS?"Sáng":t<CFG.aftEnd?"Chiều":"Tối";
 let S=null;          // normalized data
 let SRC=null;        // {kind:'live'|'snapshot', at, hasMore:[]}
 
-const state={origin:null,stops:new Set(),effort:"Nặng",override:null,tab:"plan",last:null,edits:{removed:[],pins:[]},undo:[],flash:null};
+const state={origin:null,stops:new Set(),orderFixed:null,effort:"Nặng",override:null,tab:"plan",last:null,edits:{removed:[],pins:[]},undo:[],flash:null};
 
 /* ---------------- Data ---------------- */
 function normalize(raw){
@@ -908,6 +925,10 @@ function plan(req){
   if(req.stops.length>6){R.errors.push("Chọn tối đa 6 điểm nghỉ đêm để máy còn thử hết các thứ tự tuyến.");return R}
   const nights=req.days-1;
   const routes=chooseRoute(req.origin,req.stops,{inLeg:flightSel(req.outFlight).leg,outLeg:flightSel(req.retFlight).leg});
+  if(req.order&&req.order.length===req.stops.length){
+    const key=req.order.join(',');
+    routes.sort((a,b)=>(a.p.join(',')===key?0:1)-(b.p.join(',')===key?0:1)||(a.m-b.m));
+  }
   const freeBest=(flightSel(req.outFlight).leg||flightSel(req.retFlight).leg)?chooseRoute(req.origin,req.stops).filter(r=>Number.isFinite(r.m))[0]:null;
   let best=routes[0];
   if(!best||!Number.isFinite(best.m)){
@@ -927,6 +948,8 @@ function plan(req){
   if(!R.trace.routes.includes(best))R.trace.routes.push(best);
   R.trace.gwAlt=freeBest&&freeBest.m<best.m-30&&(freeBest.gi.id!==best.gi.id||freeBest.gr.id!==best.gr.id)?freeBest:null;
   R.route=best;
+  if(req.order&&req.order.length===req.stops.length&&best.p.join(',')!==req.order.join(','))
+    R.warnings.push(`Thứ tự bạn đặt (${req.order.map(id=>(S.dById.get(id)||{}).name||id).join(' → ')}) không khả thi do ràng buộc chuyến bay hoặc thiếu dữ liệu chặng; máy dùng thứ tự tối ưu.`);
   const order=best.p;
   const na=allocNights(order,nights,best.gi,best.gr,req.override);
   if(na.error){R.errors.push(na.error);return R}
@@ -1782,6 +1805,29 @@ function adjustNight(id,d){
   state.override=cur;run();
 }
 
+/* ---------------- Thứ tự điểm đến ---------------- */
+function renderOrderList(){
+  const arr=state.orderFixed||[...state.stops];
+  const wrap=$("#orderWrap");
+  if(arr.length<2){wrap.hidden=true;return}
+  wrap.hidden=false;
+  const seq=$("#orderSeq");
+  seq.innerHTML=arr.map((id,i,a)=>`${i?'<span class="oarrow">→</span>':''}<span class="ostop"><button type="button" class="omv" data-idx="${i}" data-d="-1"${i===0?" disabled":""}>‹</button>${esc(dn(id))}<button type="button" class="omv" data-idx="${i}" data-d="1"${i===a.length-1?" disabled":""}>›</button></span>`).join("");
+  const resetBtn=$("#resetOrder");
+  resetBtn.hidden=!state.orderFixed;
+  seq.querySelectorAll(".omv").forEach(b=>b.addEventListener("click",()=>{
+    const cur=state.orderFixed?[...state.orderFixed]:[...state.stops];
+    const idx=+b.dataset.idx,ni=idx+(+b.dataset.d);
+    if(ni<0||ni>=cur.length)return;
+    [cur[idx],cur[ni]]=[cur[ni],cur[idx]];
+    state.orderFixed=cur;
+    state.override=null;
+    renderOrderList();
+    if(state.last)run();
+  }));
+  resetBtn.onclick=()=>{state.orderFixed=null;state.override=null;renderOrderList();if(state.last)run()};
+}
+
 /* ---------------- Form ---------------- */
 function nextThursday(){const d=new Date();d.setDate(d.getDate()+3);while(d.getDay()!==4)d.setDate(d.getDate()+1);return fmtISO(d)}
 function setupForm(){
@@ -1797,9 +1843,22 @@ function setupForm(){
   if(!state.stops.size){const hn=stays.find(d=>d.name==="Hà Nội"),sp_=stays.find(d=>d.name==="Sapa");if(hn)state.stops.add(hn.id);if(sp_)state.stops.add(sp_.id)}
   const box=$("#stops");
   box.innerHTML=stays.map(d=>`<button type="button" class="chip" data-id="${d.id}" aria-pressed="${state.stops.has(d.id)}">${esc(d.name)}</button>`).join("");
-  box.querySelectorAll(".chip").forEach(b=>b.addEventListener("click",()=>{const id=b.dataset.id;state.stops.has(id)?state.stops.delete(id):state.stops.add(id);b.setAttribute("aria-pressed",state.stops.has(id));state.override=null;refreshFlights()}));
+  box.querySelectorAll(".chip").forEach(b=>b.addEventListener("click",()=>{
+    const id=b.dataset.id;
+    if(state.stops.has(id)){
+      state.stops.delete(id);
+      if(state.orderFixed){state.orderFixed=state.orderFixed.filter(x=>x!==id);if(state.orderFixed.length<2)state.orderFixed=null}
+    }else{
+      state.stops.add(id);
+      if(state.orderFixed)state.orderFixed=[...state.orderFixed,id];
+    }
+    b.setAttribute("aria-pressed",state.stops.has(id));
+    state.override=null;
+    renderOrderList();
+    refreshFlights();
+  }));
   if(!$("#date").value)$("#date").value=nextThursday();
-  refreshFlights();updateHints();
+  refreshFlights();updateHints();renderOrderList();
   $("#run").disabled=false;
 }
 function refreshFlights(){
@@ -1830,7 +1889,7 @@ function updateHints(){
   const v=$("#date").value;$("#wdHint").textContent=v?wdOf(v):"";
 }
 function readReq(){
-  return{origin:$("#origin").value,stops:[...state.stops],days:Math.max(2,Math.min(12,+$("#days").value||4)),date:$("#date").value||nextThursday(),
+  return{origin:$("#origin").value,stops:[...state.stops],order:state.orderFixed,days:Math.max(2,Math.min(12,+$("#days").value||4)),date:$("#date").value||nextThursday(),
     outFlight:$("#fOut").value,retFlight:$("#fRet").value,effort:state.effort,defDur:Math.max(15,+$("#defDur").value||90),hop:Math.max(0,+$("#hop").value||0),override:state.override,edits:state.edits};
 }
 function run(){
