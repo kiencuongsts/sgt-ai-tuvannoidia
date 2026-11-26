@@ -20,12 +20,15 @@ jobs:
           SGT_CLIENT_SECRET: ${{ secrets.SGT_CLIENT_SECRET }}
           SGT_API_BASE: ${{ vars.SGT_API_BASE || 'https://platform.saigontourist.net' }}
         run: node scripts/sync-sgt.mjs && node scripts/build-sgt-app.mjs
+      - name: Xác thực Google Cloud
+        uses: google-github-actions/auth@7b53cdc2a387814ed14eec026287aac689ae8c9b # v2.1.9
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       - name: Upload sgt-app lên Firebase Storage
         uses: google-github-actions/upload-cloud-storage@c0f6160ff80057923ff50e5e567695cea181ec23 # v2
         with:
           path: data/sgt-app.json
           destination: sgt-tour-creator.firebasestorage.app/data
-          credentials: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       - name: Deploy lên Firebase Hosting
         uses: FirebaseExtended/action-hosting-deploy@500ac625ca2dd40cbd15f7659af953801858032a # v0.11.0
         with:
