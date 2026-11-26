@@ -1,9 +1,9 @@
 // Lấy dữ liệu Tour và Services từ SGT Channel API, ghi vào data/sgt-tours.json và data/sgt-services.json.
 // Chỉ đọc (tour:read, service:read). Không gọi Booking.
-// Biến môi trường: SGT_CLIENT_ID, SGT_CLIENT_SECRET (lưu trong GitHub Secrets), SGT_API_BASE (mặc định https://api.saigontourist.me)
+// Biến môi trường: SGT_CLIENT_ID, SGT_CLIENT_SECRET (lưu trong GitHub Secrets), SGT_API_BASE (mặc định https://platform.saigontourist.net)
 import { writeFileSync } from "node:fs";
 
-const BASE = (process.env.SGT_API_BASE || "https://api.saigontourist.me").replace(/\/$/, "");
+const BASE = (process.env.SGT_API_BASE || "https://platform.saigontourist.net").replace(/\/$/, "");
 const ID = process.env.SGT_CLIENT_ID, SECRET = process.env.SGT_CLIENT_SECRET;
 if (!ID || !SECRET) { console.error("Thiếu SGT_CLIENT_ID / SGT_CLIENT_SECRET"); process.exit(1); }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
