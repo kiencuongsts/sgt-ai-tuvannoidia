@@ -20,10 +20,16 @@ jobs:
           SGT_CLIENT_SECRET: ${{ secrets.SGT_CLIENT_SECRET }}
           SGT_API_BASE: ${{ vars.SGT_API_BASE || 'https://api.saigontourist.me' }}
         run: node scripts/sync-sgt.mjs && node scripts/build-sgt-app.mjs
-      - name: Ghi lại nếu có thay đổi
-        run: |
-          git config user.name "sgt-sync-bot"
-          git config user.email "actions@users.noreply.github.com"
-          git add data/sgt-tours.json data/sgt-services.json data/sgt-app.json
-          git diff --cached --quiet || git commit -m "Đồng bộ Tour & Services từ SGT API"
-          git push
+      - name: Upload sgt-app lên Firebase Storage
+        uses: google-github-actions/upload-cloud-storage@v2
+        with:
+          path: data/sgt-app.json
+          destination: FIREBASE_PROJECT_ID.firebasestorage.app/data
+          credentials: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      - name: Deploy lên Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0.9
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          channelId: live
+          projectId: FIREBASE_PROJECT_ID
