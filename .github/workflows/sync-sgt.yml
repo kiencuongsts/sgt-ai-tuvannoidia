@@ -24,7 +24,7 @@ jobs:
         uses: google-github-actions/upload-cloud-storage@c0f6160ff80057923ff50e5e567695cea181ec23 # v2
         with:
           path: data/sgt-app.json
-          destination: FIREBASE_PROJECT_ID.firebasestorage.app/data
+          destination: sgt-tour-creator.firebasestorage.app/data
           credentials: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       - name: Deploy lên Firebase Hosting
         uses: FirebaseExtended/action-hosting-deploy@500ac625ca2dd40cbd15f7659af953801858032a # v0.11.0
@@ -32,4 +32,4 @@ jobs:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           channelId: live
-          projectId: FIREBASE_PROJECT_ID
+          projectId: sgt-tour-creator
