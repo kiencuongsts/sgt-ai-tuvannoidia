@@ -1952,6 +1952,7 @@ $("#effort").querySelectorAll("button").forEach(b=>b.addEventListener("click",()
 
 /* ---------------- Loading ---------------- */
 const NOTION_P="https://app.notion.com/p/";
+const SGT_APP_URL="https://firebasestorage.googleapis.com/v0/b/FIREBASE_PROJECT_ID.firebasestorage.app/o/data%2Fsgt-app.json?alt=media";
 const TABLES={"diem-den":"Điểm đến","diem-tham-quan":"Điểm tham quan","chang":"Chặng di chuyển","ngoai-le":"Lịch ngoại lệ","khoi-ngay":"Khối ngày"};
 function setStatus(kind,text){const p=$("#status");p.className="pill "+kind;$("#statusText").textContent=text}
 function fromStore(docs){
@@ -1973,7 +1974,7 @@ async function start(){
     showLoadError(`Không tải được file dữ liệu (${e.message}). Nếu đang mở file index.html trực tiếp trên máy, hãy mở qua GitHub Pages hoặc một web server.`);
     return;
   }
-  for(const k of ["toa-do","quy-tac","lich-chay","sgt-app"]){try{docs[k]=await fetch("data/"+k+".json",{cache:"no-cache"}).then(r=>r.ok?r.json():null)}catch(e){}}
+  for(const k of ["toa-do","quy-tac","lich-chay","sgt-app"]){const _u=k==="sgt-app"?SGT_APP_URL:"data/"+k+".json";try{docs[k]=await fetch(_u,{cache:"no-cache"}).then(r=>r.ok?r.json():null)}catch(e){}}
   S=compileRules(index(fromStore(docs)));
   S.coords=new Map(((docs["toa-do"]||{}).rows||[]).map(r=>[r.id,r]));
   S.sgt=docs["sgt-app"]&&docs["sgt-app"].tours?docs["sgt-app"]:null;if(S.sgt)sgtIndex();
