@@ -18,7 +18,7 @@ jobs:
         env:
           SGT_CLIENT_ID: ${{ secrets.SGT_CLIENT_ID }}
           SGT_CLIENT_SECRET: ${{ secrets.SGT_CLIENT_SECRET }}
-          SGT_API_BASE: ${{ vars.SGT_API_BASE || 'https://api.saigontourist.me' }}
+          SGT_API_BASE: ${{ vars.SGT_API_BASE || 'https://api.saigontourist.net' }}
         run: node scripts/sync-sgt.mjs && node scripts/build-sgt-app.mjs
       - name: Upload sgt-app lên Firebase Storage
         uses: google-github-actions/upload-cloud-storage@c0f6160ff80057923ff50e5e567695cea181ec23 # v2
