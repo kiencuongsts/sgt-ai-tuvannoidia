@@ -41,8 +41,9 @@ button,input,select{font:inherit;color:inherit}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
 .wrap{max-width:1260px;margin:0 auto}
 .top{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center;justify-content:space-between;padding-block:18px 14px;border-bottom:1px solid var(--line);margin-bottom:20px}
-.brand{display:flex;flex-direction:column;gap:2px;min-width:0}
-.brand h1{margin:0;font-size:20px;font-weight:700;letter-spacing:-.01em}
+.brand{display:flex;flex-direction:column;gap:4px;min-width:0}
+.brand-logo{height:44px;width:auto;display:block}
+@media(prefers-color-scheme:dark){.brand-logo{filter:brightness(.9) contrast(1.05)}}
 .brand p{margin:0;color:var(--muted);font-size:13px}
 .status{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .pill{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;font-size:12.5px;background:var(--sunk);color:var(--muted);border:1px solid var(--line)}
@@ -271,8 +272,8 @@ body.tm-lock{overflow:hidden}
 <div class="wrap">
   <div class="top">
     <div class="brand">
-      <h1>Trợ lý thiết kế tour</h1>
-      <p>Bản demo · Lịch trình gợi ý từ dữ liệu điểm tham quan, kèm lý do và minh chứng cho từng lựa chọn</p>
+      <img src="logo-full.png" alt="Saigontourist Dịch Vụ Lữ Hành" class="brand-logo">
+      <p>Trợ lý thiết kế tour · Lịch trình gợi ý từ dữ liệu điểm tham quan, kèm lý do và minh chứng cho từng lựa chọn</p>
     </div>
     <div class="status">
       <span class="pill loading" id="status"><span class="dot"></span><span id="statusText">Đang kết nối dữ liệu…</span></span>
